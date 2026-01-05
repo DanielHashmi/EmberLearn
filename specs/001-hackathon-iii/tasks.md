@@ -15,27 +15,29 @@
 
 ## Path Conventions
 
-This is a dual-repository project:
-- **skills-library repository**: `.claude/skills/` (Skills only, separate repo)
-- **EmberLearn repository**: `backend/`, `frontend/`, `k8s/` (application code)
+**Single Repository During Development**:
+- All work happens in THIS EmberLearn repository
+- Skills created in `.claude/skills/` (for Claude Code to discover and use)
+- Application code in `backend/`, `frontend/`, `k8s/`
+- At submission, `.claude/skills/` will be COPIED to create separate skills-library repository
 
-Paths shown assume EmberLearn repository root unless prefixed with `.claude/skills/`.
+All paths shown are relative to EmberLearn repository root.
 
 ---
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Project initialization and basic repository structure for both skills-library and EmberLearn
+**Purpose**: Project initialization and basic repository structure
 
-- [ ] T001 Create skills-library repository with `.claude/skills/` structure and README.md template
-- [ ] T002 Create EmberLearn repository with backend/, frontend/, k8s/ directories per plan.md structure
+- [ ] T001 Create .claude/skills/ directory structure in THIS repository for Skill development
+- [ ] T002 Create backend/, frontend/, k8s/ directories per plan.md structure
 - [ ] T003 [P] Initialize Python backend project with pyproject.toml for FastAPI 0.110+, OpenAI Agents SDK, Dapr SDK, structlog, orjson
 - [ ] T004 [P] Initialize Next.js 15+ frontend with TypeScript 5.0+, @monaco-editor/react, tailwind CSS
-- [ ] T005 [P] Create .gitignore files for both repositories (Python, Node.js, secrets, .env)
+- [ ] T005 [P] Create .gitignore files (Python, Node.js, secrets, .env, but DO NOT ignore .claude/skills/)
 - [ ] T006 [P] Create constitution v1.0.1 in .specify/memory/constitution.md with 8 principles from spec.md
-- [ ] T007 [P] Update CLAUDE.md in EmberLearn repository with EmberLearn-specific guidance
+- [ ] T007 [P] Update CLAUDE.md with EmberLearn-specific guidance
 
-**Checkpoint**: Both repository structures ready for development
+**Checkpoint**: Repository structure ready for development
 
 ---
 
@@ -64,7 +66,7 @@ Paths shown assume EmberLearn repository root unless prefixed with `.claude/skil
 
 ## Phase 3: User Story 1 - Create Foundation Skills (Priority: P1) 🎯 MVP PART 1
 
-**Goal**: Create 7 core reusable Skills with MCP Code Execution pattern enabling autonomous cloud-native deployment
+**Goal**: Create 7 core reusable Skills with MCP Code Execution pattern enabling autonomous cloud-native deployment (FR-001, FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008)
 
 **Independent Test**: Provide single prompt "Deploy Kafka on Kubernetes" to Claude Code or Goose and verify autonomous execution, deployment success, validation completion with zero manual steps
 
@@ -72,67 +74,67 @@ Paths shown assume EmberLearn repository root unless prefixed with `.claude/skil
 
 ### Implementation for User Story 1
 
-#### Skill 1: agents-md-gen
+#### Skill 1: agents-md-gen (FR-001, FR-002, FR-003, FR-004, FR-005)
 
 - [ ] T020 [P] [US1] Create .claude/skills/agents-md-gen/SKILL.md with AAIF format (name, description <1024 chars, no tools restriction) per FR-003
-- [ ] T021 [P] [US1] Create .claude/skills/agents-md-gen/scripts/analyze_repo.py to scan repository structure and identify conventions
-- [ ] T022 [P] [US1] Create .claude/skills/agents-md-gen/scripts/generate_agents_md.py to generate AGENTS.md file from analysis
-- [ ] T023 [P] [US1] Create .claude/skills/agents-md-gen/REFERENCE.md with detailed AGENTS.md format guidelines and examples
-- [ ] T024 [US1] Create .claude/skills/agents-md-gen/scripts/validate.sh to verify AGENTS.md generation succeeds and file is created
+- [ ] T021 [P] [US1] Create .claude/skills/agents-md-gen/scripts/analyze_repo.py to scan repository structure and identify conventions per FR-004
+- [ ] T022 [P] [US1] Create .claude/skills/agents-md-gen/scripts/generate_agents_md.py to generate AGENTS.md file from analysis per FR-004
+- [ ] T023 [P] [US1] Create .claude/skills/agents-md-gen/REFERENCE.md with detailed AGENTS.md format guidelines and examples per FR-002
+- [ ] T024 [US1] Create .claude/skills/agents-md-gen/scripts/validate.sh to verify AGENTS.md generation succeeds and file is created per FR-005
 
-#### Skill 2: kafka-k8s-setup
+#### Skill 2: kafka-k8s-setup (FR-001, FR-002, FR-003, FR-004, FR-005)
 
-- [ ] T025 [P] [US1] Create .claude/skills/kafka-k8s-setup/SKILL.md with Kafka deployment description and prerequisite checks
-- [ ] T026 [P] [US1] Create .claude/skills/kafka-k8s-setup/scripts/deploy_kafka.sh to install Bitnami Kafka Helm chart with topics from FR-012
-- [ ] T027 [P] [US1] Create .claude/skills/kafka-k8s-setup/scripts/verify_kafka.py to check all brokers Running and test pub/sub
-- [ ] T028 [P] [US1] Create .claude/skills/kafka-k8s-setup/scripts/rollback_kafka.sh for automated rollback on failure
-- [ ] T029 [P] [US1] Create .claude/skills/kafka-k8s-setup/REFERENCE.md with Kafka architecture, topics schema, troubleshooting guide
+- [ ] T025 [P] [US1] Create .claude/skills/kafka-k8s-setup/SKILL.md with Kafka deployment description and prerequisite checks per FR-003
+- [ ] T026 [P] [US1] Create .claude/skills/kafka-k8s-setup/scripts/deploy_kafka.sh to install Bitnami Kafka Helm chart with topics from FR-012 per FR-004
+- [ ] T027 [P] [US1] Create .claude/skills/kafka-k8s-setup/scripts/verify_kafka.py to check all brokers Running and test pub/sub per FR-005
+- [ ] T028 [P] [US1] Create .claude/skills/kafka-k8s-setup/scripts/rollback_kafka.sh for automated rollback on failure per FR-004
+- [ ] T029 [P] [US1] Create .claude/skills/kafka-k8s-setup/REFERENCE.md with Kafka architecture, topics schema, troubleshooting guide per FR-002
 
-#### Skill 3: postgres-k8s-setup
+#### Skill 3: postgres-k8s-setup (FR-001, FR-002, FR-003, FR-004, FR-005)
 
-- [ ] T030 [P] [US1] Create .claude/skills/postgres-k8s-setup/SKILL.md with PostgreSQL deployment description
-- [ ] T031 [P] [US1] Create .claude/skills/postgres-k8s-setup/scripts/deploy_postgres.sh to install Neon PostgreSQL Helm chart
-- [ ] T032 [P] [US1] Create .claude/skills/postgres-k8s-setup/scripts/run_migrations.py to execute Alembic migrations from backend/database/migrations/
-- [ ] T033 [P] [US1] Create .claude/skills/postgres-k8s-setup/scripts/verify_schema.py to validate all 10 tables exist with correct columns
-- [ ] T034 [P] [US1] Create .claude/skills/postgres-k8s-setup/REFERENCE.md with database schema documentation and migration guidelines
+- [ ] T030 [P] [US1] Create .claude/skills/postgres-k8s-setup/SKILL.md with PostgreSQL deployment description per FR-003
+- [ ] T031 [P] [US1] Create .claude/skills/postgres-k8s-setup/scripts/deploy_postgres.sh to install Neon PostgreSQL Helm chart per FR-004
+- [ ] T032 [P] [US1] Create .claude/skills/postgres-k8s-setup/scripts/run_migrations.py to execute Alembic migrations from backend/database/migrations/ per FR-004
+- [ ] T033 [P] [US1] Create .claude/skills/postgres-k8s-setup/scripts/verify_schema.py to validate all 10 tables exist with correct columns per FR-005
+- [ ] T034 [P] [US1] Create .claude/skills/postgres-k8s-setup/REFERENCE.md with database schema documentation and migration guidelines per FR-002
 
-#### Skill 4: fastapi-dapr-agent
+#### Skill 4: fastapi-dapr-agent (FR-001, FR-002, FR-003, FR-004, FR-005)
 
-- [ ] T035 [P] [US1] Create .claude/skills/fastapi-dapr-agent/SKILL.md with agent scaffolding description
-- [ ] T036 [P] [US1] Create .claude/skills/fastapi-dapr-agent/scripts/scaffold_agent.py to generate FastAPI service structure with Dapr annotations per research.md decision 2
-- [ ] T037 [P] [US1] Create .claude/skills/fastapi-dapr-agent/scripts/generate_dockerfile.py to create Dockerfile with FastAPI + Dapr sidecar setup
-- [ ] T038 [P] [US1] Create .claude/skills/fastapi-dapr-agent/scripts/generate_k8s_manifests.py to create deployment.yaml and service.yaml with Dapr annotations
-- [ ] T039 [P] [US1] Create .claude/skills/fastapi-dapr-agent/REFERENCE.md with OpenAI Agents SDK integration guide, Dapr patterns, examples
+- [ ] T035 [P] [US1] Create .claude/skills/fastapi-dapr-agent/SKILL.md with agent scaffolding description per FR-003
+- [ ] T036 [P] [US1] Create .claude/skills/fastapi-dapr-agent/scripts/scaffold_agent.py to generate FastAPI service structure with Dapr annotations per FR-004, research.md decision 2
+- [ ] T037 [P] [US1] Create .claude/skills/fastapi-dapr-agent/scripts/generate_dockerfile.py to create Dockerfile with FastAPI + Dapr sidecar setup per FR-004
+- [ ] T038 [P] [US1] Create .claude/skills/fastapi-dapr-agent/scripts/generate_k8s_manifests.py to create deployment.yaml and service.yaml with Dapr annotations per FR-004
+- [ ] T039 [P] [US1] Create .claude/skills/fastapi-dapr-agent/REFERENCE.md with OpenAI Agents SDK integration guide, Dapr patterns, examples per FR-002
 
-#### Skill 5: mcp-code-execution
+#### Skill 5: mcp-code-execution (FR-001, FR-002, FR-003, FR-004, FR-005)
 
-- [ ] T040 [P] [US1] Create .claude/skills/mcp-code-execution/SKILL.md with MCP server wrapping pattern description
-- [ ] T041 [P] [US1] Create .claude/skills/mcp-code-execution/scripts/wrap_mcp_server.py to generate executable scripts from MCP server definitions
-- [ ] T042 [P] [US1] Create .claude/skills/mcp-code-execution/scripts/validate_structure.py to check SKILL.md + scripts/ + REFERENCE.md structure per FR-002
-- [ ] T043 [P] [US1] Create .claude/skills/mcp-code-execution/REFERENCE.md with MCP Code Execution pattern documentation and token efficiency explanation
+- [ ] T040 [P] [US1] Create .claude/skills/mcp-code-execution/SKILL.md with MCP server wrapping pattern description per FR-003
+- [ ] T041 [P] [US1] Create .claude/skills/mcp-code-execution/scripts/wrap_mcp_server.py to generate executable scripts from MCP server definitions per FR-004
+- [ ] T042 [P] [US1] Create .claude/skills/mcp-code-execution/scripts/validate_structure.py to check SKILL.md + scripts/ + REFERENCE.md structure per FR-002, FR-005
+- [ ] T043 [P] [US1] Create .claude/skills/mcp-code-execution/REFERENCE.md with MCP Code Execution pattern documentation and token efficiency explanation per FR-002
 
-#### Skill 6: nextjs-k8s-deploy
+#### Skill 6: nextjs-k8s-deploy (FR-001, FR-002, FR-003, FR-004, FR-005)
 
-- [ ] T044 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/SKILL.md with Next.js deployment and Monaco Editor integration description
-- [ ] T045 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/scripts/scaffold_nextjs.sh to initialize Next.js 15+ project with TypeScript
-- [ ] T046 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/scripts/integrate_monaco.py to add @monaco-editor/react with SSR disabled per research.md decision 5
-- [ ] T047 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/scripts/generate_k8s_deploy.py to create Next.js Kubernetes deployment manifests
-- [ ] T048 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/REFERENCE.md with Next.js SSR patterns, Monaco Editor configuration, troubleshooting
+- [ ] T044 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/SKILL.md with Next.js deployment and Monaco Editor integration description per FR-003
+- [ ] T045 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/scripts/scaffold_nextjs.sh to initialize Next.js 15+ project with TypeScript per FR-004
+- [ ] T046 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/scripts/integrate_monaco.py to add @monaco-editor/react with SSR disabled per FR-004, research.md decision 5
+- [ ] T047 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/scripts/generate_k8s_deploy.py to create Next.js Kubernetes deployment manifests per FR-004
+- [ ] T048 [P] [US1] Create .claude/skills/nextjs-k8s-deploy/REFERENCE.md with Next.js SSR patterns, Monaco Editor configuration, troubleshooting per FR-002
 
-#### Skill 7: docusaurus-deploy
+#### Skill 7: docusaurus-deploy (FR-001, FR-002, FR-003, FR-004, FR-005)
 
-- [ ] T049 [P] [US1] Create .claude/skills/docusaurus-deploy/SKILL.md with documentation generation and deployment description
-- [ ] T050 [P] [US1] Create .claude/skills/docusaurus-deploy/scripts/scan_codebase.py to extract README files and code comments
-- [ ] T051 [P] [US1] Create .claude/skills/docusaurus-deploy/scripts/generate_docusaurus_config.py to create Docusaurus 3.0+ configuration
-- [ ] T052 [P] [US1] Create .claude/skills/docusaurus-deploy/scripts/build_and_deploy.sh to build static site and deploy to Kubernetes
-- [ ] T053 [P] [US1] Create .claude/skills/docusaurus-deploy/REFERENCE.md with Docusaurus structure, API doc generation, search configuration
+- [ ] T049 [P] [US1] Create .claude/skills/docusaurus-deploy/SKILL.md with documentation generation and deployment description per FR-003
+- [ ] T050 [P] [US1] Create .claude/skills/docusaurus-deploy/scripts/scan_codebase.py to extract README files and code comments per FR-004
+- [ ] T051 [P] [US1] Create .claude/skills/docusaurus-deploy/scripts/generate_docusaurus_config.py to create Docusaurus 3.0+ configuration per FR-004
+- [ ] T052 [P] [US1] Create .claude/skills/docusaurus-deploy/scripts/build_and_deploy.sh to build static site and deploy to Kubernetes per FR-004
+- [ ] T053 [P] [US1] Create .claude/skills/docusaurus-deploy/REFERENCE.md with Docusaurus structure, API doc generation, search configuration per FR-002
 
 #### Skill Validation and Documentation
 
-- [ ] T054 [US1] Create skills-library README.md with skill usage instructions section (FR-008)
-- [ ] T055 [US1] Add token efficiency measurements section template to README.md (will be filled in US3)
-- [ ] T056 [US1] Add cross-agent compatibility matrix template to README.md (will be filled in US2)
-- [ ] T057 [US1] Add development process notes section to README.md documenting Skill creation workflow
+- [ ] T054 [US1] Create skills-library README.md with skill usage instructions section per FR-008
+- [ ] T055 [US1] Add token efficiency measurements section template to README.md per FR-008 (will be filled in US3)
+- [ ] T056 [US1] Add cross-agent compatibility matrix template to README.md per FR-006, FR-008 (will be filled in US2)
+- [ ] T057 [US1] Add development process notes section to README.md documenting Skill creation workflow per FR-008
 
 **Checkpoint**: All 7 Skills created with SKILL.md + scripts/ + REFERENCE.md structure. Skills ready for cross-agent testing (US2) and token measurement (US3).
 
@@ -381,7 +383,7 @@ Paths shown assume EmberLearn repository root unless prefixed with `.claude/skil
 
 ## Phase 9: User Story 7 - Deploy Documentation (Priority: P4)
 
-**Goal**: Use docusaurus-deploy Skill to generate and deploy comprehensive documentation enabling hackathon judges to understand architecture and evaluation criteria
+**Goal**: Use docusaurus-deploy Skill to generate and deploy comprehensive documentation enabling hackathon judges to understand architecture and evaluation criteria (FR-023, FR-024, FR-025)
 
 **Independent Test**: Prompt AI agent "Generate and deploy documentation" and verify Docusaurus site builds, deploys to K8s, accessible via browser with search
 
@@ -389,23 +391,23 @@ Paths shown assume EmberLearn repository root unless prefixed with `.claude/skil
 
 ### Implementation for User Story 7
 
-- [ ] T167 [US7] Use docusaurus-deploy Skill to scan EmberLearn codebase and extract README files, code comments
-- [ ] T168 [US7] Create docs/ directory with Docusaurus 3.0+ configuration generated by Skill
+- [ ] T167 [US7] Use docusaurus-deploy Skill to scan EmberLearn codebase and extract README files, code comments per FR-023
+- [ ] T168 [US7] Create docs/ directory with Docusaurus 3.0+ configuration generated by Skill per FR-023
 - [ ] T169 [P] [US7] Create docs/docs/skills-guide.md documenting MCP Code Execution pattern, token efficiency, cross-agent testing per FR-024
 - [ ] T170 [P] [US7] Create docs/docs/architecture.md with tech stack diagram, microservices overview, data flow per FR-024
 - [ ] T171 [P] [US7] Create docs/docs/api-reference.md from contracts/agent-api.yaml with agent endpoints, Kafka topics, data schemas per FR-024
 - [ ] T172 [P] [US7] Create docs/docs/evaluation.md with 100-point hackathon evaluation breakdown per FR-024
-- [ ] T173 [US7] Generate Docusaurus static site via Skill build script
-- [ ] T174 [US7] Deploy documentation site to Kubernetes via Skill deployment script
-- [ ] T175 [US7] Verify documentation accessible and search functional per SC-013, SC-015
+- [ ] T173 [US7] Generate Docusaurus static site via Skill build script per FR-023
+- [ ] T174 [US7] Deploy documentation site to Kubernetes via Skill deployment script per FR-025
+- [ ] T175 [US7] Verify documentation accessible and search functional per FR-025, SC-013, SC-015
 
 **Checkpoint**: Documentation deployed with all required sections. Judges can understand project architecture, Skills usage, evaluation criteria.
 
 ---
 
-## Phase 10: Polish & Cross-Cutting Concerns
+## Phase 10: Essential Features & Validation
 
-**Purpose**: Final improvements, validation, hackathon submission preparation
+**Purpose**: Critical security features (code sandbox), reliability features (graceful degradation, struggle detection), final validation, and hackathon submission preparation
 
 #### Code Execution Sandbox (Security)
 
@@ -441,13 +443,14 @@ Paths shown assume EmberLearn repository root unless prefixed with `.claude/skil
 
 #### Hackathon Submission Preparation
 
-- [ ] T193 [P] Verify skills-library repository contains all 7 Skills with SKILL.md + scripts/ + REFERENCE.md
-- [ ] T194 [P] Verify skills-library README.md contains usage instructions, token measurements, compatibility matrix per FR-027
-- [ ] T195 [P] Verify EmberLearn repository has commit history showing agentic workflow (commits like "Claude: implemented X using Y skill") per FR-009, FR-028
-- [ ] T196 Create submission checklist document verifying all evaluation criteria met per quickstart.md lines 361-383
-- [ ] T197 Calculate evaluation scores: Skills Autonomy (/15), Token Efficiency (/10), Cross-Agent Compatibility (/5), Architecture (/20), MCP Integration (/10), Documentation (/10), Spec-Kit Plus (/15), EmberLearn Completion (/15)
-- [ ] T198 Verify overall score ≥80/100 points per SC-020
-- [ ] T199 Prepare submission to https://forms.gle/Mrhf9XZsuXN4rWJf7 with both repository links
+- [ ] T193 Create separate skills-library repository and copy .claude/skills/ from EmberLearn repository
+- [ ] T194 [P] Verify skills-library repository contains all 7 Skills with SKILL.md + scripts/ + REFERENCE.md structure
+- [ ] T195 [P] Create skills-library README.md with: installation instructions (copy to ~/.claude/skills/), usage examples, token measurements, cross-agent compatibility matrix per FR-027
+- [ ] T196 [P] Verify EmberLearn repository has commit history showing agentic workflow (commits like "Claude: implemented X using Y skill") per FR-009, FR-028
+- [ ] T197 Create submission checklist document verifying all evaluation criteria met per constitution.md lines 332-344
+- [ ] T198 Calculate evaluation scores: Skills Autonomy (/15), Token Efficiency (/10), Cross-Agent Compatibility (/5), Architecture (/20), MCP Integration (/10), Documentation (/10), Spec-Kit Plus (/15), EmberLearn Completion (/15)
+- [ ] T199 Verify overall score ≥80/100 points per SC-020
+- [ ] T200 Submit to https://forms.gle/Mrhf9XZsuXN4rWJf7 with Repository 1 (skills-library) and Repository 2 (EmberLearn) links
 
 ---
 
@@ -592,7 +595,7 @@ With multiple developers (or parallel AI agent execution):
 
 ## Summary
 
-**Total Tasks**: 199 tasks across 10 phases
+**Total Tasks**: 200 tasks across 10 phases
 **Task Count by User Story**:
 - Setup: 7 tasks
 - Foundational: 12 tasks
@@ -603,7 +606,7 @@ With multiple developers (or parallel AI agent execution):
 - US5 (AI Agents): 39 tasks (6 agents × ~6 tasks each + validation)
 - US6 (Frontend): 27 tasks
 - US7 (Documentation): 9 tasks
-- Polish: 24 tasks
+- Polish: 25 tasks (including submission preparation)
 
 **Parallel Opportunities Identified**:
 - Phase 1: 5 parallel tasks (T003-T007)
@@ -632,9 +635,9 @@ With multiple developers (or parallel AI agent execution):
 - **Competitive submission**: Phases 1-8 (US1-US6) - Includes full EmberLearn application
 - **Maximum points**: All phases 1-10 - Complete system with documentation and polish
 
-**Format Validation**: ✅ All 199 tasks follow required checklist format:
+**Format Validation**: ✅ All 200 tasks follow required checklist format:
 - ✅ Checkbox: `- [ ]` prefix on every task
-- ✅ Task ID: Sequential T001-T199
+- ✅ Task ID: Sequential T001-T200
 - ✅ [P] marker: Present on 126 parallelizable tasks
 - ✅ [Story] label: Present on all user story phase tasks (US1-US7)
 - ✅ Description: Clear action with exact file paths

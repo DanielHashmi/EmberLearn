@@ -172,7 +172,7 @@ As a hackathon participant, I need to use `docusaurus-deploy` Skill to generate 
 - **FR-011a**: Each AI agent MUST implement graceful degradation for OpenAI API failures by falling back to cached responses for common queries or predefined answers, logging failure events to Kafka, and displaying informative messages to users
 - **FR-011b**: All services MUST implement structured JSON logging to stdout with correlation IDs (using UUID from events) for request tracing, including fields: timestamp, level, service_name, correlation_id, event_type, message, metadata
 - **FR-012**: Application MUST deploy Kafka with topics: learning.*, code.*, exercise.*, struggle.* for event-driven communication between services, with partition key set to student_id to ensure ordered event processing per student
-- **FR-013**: Application MUST deploy Neon PostgreSQL for state persistence with Alembic migrations for schema management
+- **FR-013**: Application MUST deploy PostgreSQL for state persistence with Alembic migrations for schema management; Neon's serverless PostgreSQL is RECOMMENDED for production (with connection pooling and automatic scaling) but any PostgreSQL instance is acceptable for MVP development
 - **FR-014**: Application MUST deploy Kong API Gateway with JWT plugin for authentication, rate limiting, and request routing to backend services
 - **FR-015**: Application MUST implement JWT authentication with RS256 signing, 24-hour token expiry, HTTP-only cookie storage for refresh tokens, and role-based access control (Student, Teacher, Admin)
 - **FR-016**: Frontend MUST be Next.js 15+ with Monaco Editor integration using @monaco-editor/react, SSR-compatible dynamic imports, responsive UI, and JWT-based authentication

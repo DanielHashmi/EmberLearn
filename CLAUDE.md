@@ -13,10 +13,30 @@ You are an expert AI assistant specializing in **Skills-Driven Development with 
 **Hackathon III Goal**: Build Skills with MCP Code Execution pattern that enable AI agents (Claude Code, Goose) to autonomously deploy and manage cloud-native microservices applications.
 
 **Deliverables**:
-1. **skills-library repository**: Separate repository with 7+ reusable Skills with MCP code execution pattern
-2. **EmberLearn repository** (this repo): Complete AI-powered Python tutoring platform built using those Skills
+1. **skills-library repository**: Separate repository (created at submission by copying `.claude/skills/`)
+2. **EmberLearn repository** (this repo): Complete AI-powered Python tutoring platform built using Skills
+
+**Development Workflow**:
+- Create all 7 Skills in `.claude/skills/` in THIS repository
+- Use those Skills to build EmberLearn application code
+- At submission time, copy `.claude/skills/` to create separate skills-library repository
 
 **Evaluation Focus**: Judges test Skills for autonomous execution and evaluate the development process, not just the final application.
+
+## Implementation with /sp.implement
+
+When you run `/sp.implement`, the Spec-Kit Plus framework will:
+1. Load tasks.md (200 tasks across 10 phases)
+2. Execute tasks sequentially, respecting dependencies
+3. Use available Skills when tasks reference them (e.g., "Deploy Kafka using kafka-k8s-setup skill")
+4. **Checkpoint for user approval** between major phases or when encountering errors
+5. Create PHRs for significant implementation decisions
+
+**Expected Autonomous Behavior**:
+- Tasks within a phase execute autonomously
+- User approval required between phases (Safety checkpoint)
+- Errors pause execution for user decision
+- Skills created in Phase 3 become available for Phase 4+ tasks
 
 ## Task Context
 
@@ -292,21 +312,30 @@ EmberLearn/
 
 ## Hackathon Submission Checklist
 
-**Repository 1: skills-library**
+**Development Process** (Single Repository):
+- [ ] All Skills created in `.claude/skills/` in THIS EmberLearn repository
+- [ ] All application code built using those Skills
+- [ ] Commit history shows agentic workflow throughout
+
+**Repository 1: skills-library** (Created at Submission):
+- [ ] Create by copying `.claude/skills/` from EmberLearn repository
 - [ ] Minimum 7 skills with SKILL.md + scripts/ + REFERENCE.md
 - [ ] Each skill tested with Claude Code AND Goose
-- [ ] README.md documents skill usage and development process
+- [ ] README.md documents skill usage, installation (copy to ~/.claude/skills/), and development process
 - [ ] Skills demonstrate autonomous execution (single prompt → deployment)
 - [ ] Token efficiency documented (before/after measurements)
+- [ ] Submit as Repository 1 to hackathon form
 
 **Repository 2: EmberLearn (this repository)**
-- [ ] AI-powered Python tutoring application built entirely using Skills (not manual coding)
-- [ ] Commit history shows agentic workflow
+- [ ] Contains BOTH `.claude/skills/` AND application code (backend/, frontend/, k8s/)
+- [ ] AI-powered Python tutoring application built entirely using Skills
+- [ ] Commit history shows agentic workflow (e.g., "Claude: deployed Kafka using kafka-k8s-setup skill")
 - [ ] All 6 AI agents functional (Triage, Concepts, Code Review, Debug, Exercise, Progress)
 - [ ] Infrastructure deployed (Kafka, Dapr, PostgreSQL, Kong)
 - [ ] Frontend with Monaco Editor integration
 - [ ] AGENTS.md present and comprehensive
 - [ ] Documentation via Docusaurus
+- [ ] Submit as Repository 2 to hackathon form
 
 **Evaluation Criteria** (100 points):
 - Skills Autonomy: 15%
