@@ -1,285 +1,175 @@
 """
 SQLAlchemy ORM models for EmberLearn database.
 
-Per data-model.md: 10 entities with relationships, validation rules, indexes.
+Auto-generated from data-model.md specification.
 """
 
 from datetime import datetime
-from enum import Enum as PyEnum
-from typing import Any
-from uuid import uuid4
+from typing import Optional
+from uuid import UUID
 
 from sqlalchemy import (
-    Boolean,
-    CheckConstraint,
-    Column,
-    DateTime,
-    Enum,
-    Float,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-    Text,
-    UniqueConstraint,
+    Boolean, Column, DateTime, Enum, Float, ForeignKey,
+    Integer, Numeric, String, Text, func, text
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+
+Base = declarative_base()
 
 
-class Base(DeclarativeBase):
-    """Base class for all ORM models."""
-    pass
-
-
-# Enums
-class UserRole(str, PyEnum):
-    STUDENT = "student"
-    TEACHER = "teacher"
-    ADMIN = "admin"
-
-
-class MasteryLevel(str, PyEnum):
-    BEGINNER = "beginner"      # 0-40%
-    LEARNING = "learning"      # 41-70%
-    PROFICIENT = "proficient"  # 71-90%
-    MASTERED = "mastered"      # 91-100%
-
-
-class StruggleTrigger(str, PyEnum):
-    SAME_ERROR_3X = "same_error_3x"
-    FAILED_EXECUTIONS_5X = "failed_executions_5x"
-    QUIZ_BELOW_50 = "quiz_below_50"
-    NO_PROGRESS_7D = "no_progress_7d"
-    EXPLICIT_HELP = "explicit_help"
-
-
-# Models
 class User(Base):
-    """User entity - Students, Teachers, Admins."""
-    __tablename__ = "users"
+    """
+    Students, teachers, and admins with authentication and profile data.
+    """
+    __tablename__ = 'user'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), default=uuid4, unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
+    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
+    email = Column(String(255), nullable=False, unique=True)
     password_hash = Column(String(255), nullable=False)
-    name = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.STUDENT, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    last_login = Column(DateTime, nullable=True)
-    is_active = Column(Boolean, default=True, nullable=False)
-
-    # Relationships
-    progress = relationship("Progress", back_populates="user", cascade="all, delete-orphan")
-    submissions = relationship("ExerciseSubmission", back_populates="user", cascade="all, delete-orphan")
-    quiz_attempts = relationship("QuizAttempt", back_populates="user", cascade="all, delete-orphan")
-    struggle_alerts = relationship("StruggleAlert", back_populates="student", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        Index("ix_users_email", "email"),
-        Index("ix_users_uuid", "uuid"),
-    )
+    role = Column(Enum('STUDENT', " 'TEACHER", " 'ADMIN", name='STUDENT_enum'), nullable=False, default="'student'")
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now())
+    last_login_at = Column(DateTime)
 
 
 class Topic(Base):
-    """Topic entity - 8 Python curriculum modules."""
-    __tablename__ = "topics"
+    """
+    Python curriculum modules (8 topics from spec: Basics, Control Flow, Data Structures, Functions, OOP, Files, Errors, Libraries).
+    """
+    __tablename__ = 'topic'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), unique=True, nullable=False)
-    description = Column(Text, nullable=True)
+    slug = Column(String(100), nullable=False, unique=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=False)
     order = Column(Integer, nullable=False)
-    prerequisites = Column(JSONB, default=list)  # List of topic IDs
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relationships
-    progress = relationship("Progress", back_populates="topic")
-    exercises = relationship("Exercise", back_populates="topic")
-    quizzes = relationship("Quiz", back_populates="topic")
-
-    __table_args__ = (
-        Index("ix_topics_order", "order"),
-    )
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class Progress(Base):
-    """Progress entity - Per-student mastery scores."""
-    __tablename__ = "progress"
+    """
+    Track student mastery per topic using weighted formula.
+    """
+    __tablename__ = 'progress'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    topic_id = Column(Integer, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
-
-    # Mastery components (per data-model.md lines 133-139)
-    exercise_score = Column(Float, default=0.0, nullable=False)  # 40% weight
-    quiz_score = Column(Float, default=0.0, nullable=False)      # 30% weight
-    code_quality_score = Column(Float, default=0.0, nullable=False)  # 20% weight
-    streak_days = Column(Integer, default=0, nullable=False)     # 10% weight
-
-    # Computed mastery score (trigger-updated)
-    mastery_score = Column(Float, default=0.0, nullable=False)
-    mastery_level = Column(Enum(MasteryLevel), default=MasteryLevel.BEGINNER, nullable=False)
-
-    exercises_completed = Column(Integer, default=0, nullable=False)
-    last_activity = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    user = relationship("User", back_populates="progress")
-    topic = relationship("Topic", back_populates="progress")
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "topic_id", name="uq_progress_user_topic"),
-        Index("ix_progress_user_id", "user_id"),
-        Index("ix_progress_topic_id", "topic_id"),
-        CheckConstraint("mastery_score >= 0 AND mastery_score <= 100", name="ck_mastery_score_range"),
-    )
+    user_id = Column(Integer, nullable=False)
+    topic_id = Column(Integer, nullable=False)
+    exercise_completion_pct = Column(Numeric, nullable=False, default='0.00')
+    quiz_score_avg = Column(Numeric, nullable=False, default='0.00')
+    code_quality_avg = Column(Numeric, nullable=False, default='0.00')
+    consistency_score = Column(Numeric, nullable=False, default='0.00')
+    mastery_score = Column(Numeric, nullable=False, default='0.00')
+    mastery_level = Column(Enum('BEGINNER', " 'LEARNING", " 'PROFICIENT", " 'MASTERED", name='BEGINNER_enum'), nullable=False, default="'beginner'")
+    last_activity_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class Exercise(Base):
-    """Exercise entity - Coding challenges."""
-    __tablename__ = "exercises"
+    """
+    Coding challenges generated by Exercise agent or pre-defined.
+    """
+    __tablename__ = 'exercise'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), default=uuid4, unique=True, nullable=False)
-    topic_id = Column(Integer, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255), nullable=False)
+    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
+    topic_id = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False)
     description = Column(Text, nullable=False)
-    starter_code = Column(Text, default="", nullable=False)
-    solution_code = Column(Text, nullable=True)  # Hidden from students
-    difficulty = Column(Enum(MasteryLevel), default=MasteryLevel.BEGINNER, nullable=False)
-    hints = Column(JSONB, default=list)  # List of hint strings
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-
-    # Relationships
-    topic = relationship("Topic", back_populates="exercises")
-    test_cases = relationship("TestCase", back_populates="exercise", cascade="all, delete-orphan")
-    submissions = relationship("ExerciseSubmission", back_populates="exercise")
-
-    __table_args__ = (
-        Index("ix_exercises_topic_id", "topic_id"),
-        Index("ix_exercises_uuid", "uuid"),
-        Index("ix_exercises_difficulty", "difficulty"),
-    )
+    difficulty = Column(Enum('EASY', " 'MEDIUM", " 'HARD", name='EASY_enum'), nullable=False)
+    starter_code = Column(Text, nullable=False, default="''")
+    solution_code = Column(Text, nullable=False)
+    created_by = Column(Integer)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class TestCase(Base):
-    """TestCase entity - Exercise validation criteria."""
-    __tablename__ = "test_cases"
+    """
+    Validation criteria for exercises (input → expected output).
+    """
+    __tablename__ = 'testcase'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    exercise_id = Column(Integer, ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False)
-    input = Column(Text, nullable=False)
+    exercise_id = Column(Integer, nullable=False)
+    input_data = Column(Text, nullable=False)
     expected_output = Column(Text, nullable=False)
-    is_hidden = Column(Boolean, default=False, nullable=False)
-    order = Column(Integer, default=0, nullable=False)
-
-    # Relationships
-    exercise = relationship("Exercise", back_populates="test_cases")
-
-    __table_args__ = (
-        Index("ix_test_cases_exercise_id", "exercise_id"),
-    )
+    is_hidden = Column(Boolean, nullable=False, default='FALSE')
+    weight = Column(Numeric, nullable=False, default='1.00')
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class ExerciseSubmission(Base):
-    """ExerciseSubmission entity - Student attempts with auto-grading."""
-    __tablename__ = "exercise_submissions"
+    """
+    Student attempts at exercises with auto-grading results.
+    """
+    __tablename__ = 'exercisesubmission'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), default=uuid4, unique=True, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    exercise_id = Column(Integer, ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False)
+    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
+    user_id = Column(Integer, nullable=False)
+    exercise_id = Column(Integer, nullable=False)
     code = Column(Text, nullable=False)
-
-    # Grading results
-    passed = Column(Boolean, default=False, nullable=False)
-    tests_passed = Column(Integer, default=0, nullable=False)
-    tests_total = Column(Integer, default=0, nullable=False)
-    execution_time_ms = Column(Integer, nullable=True)
-
-    # Code review results (JSONB for flexibility)
-    code_review = Column(JSONB, nullable=True)  # {rating, issues, summary}
-
-    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relationships
-    user = relationship("User", back_populates="submissions")
-    exercise = relationship("Exercise", back_populates="submissions")
-
-    __table_args__ = (
-        Index("ix_submissions_user_id", "user_id"),
-        Index("ix_submissions_exercise_id", "exercise_id"),
-        Index("ix_submissions_submitted_at", "submitted_at"),
-    )
+    execution_result = Column(String(255), nullable=False)
+    test_results = Column(String(255), nullable=False)
+    passed_count = Column(Integer, nullable=False, default='0')
+    total_count = Column(Integer, nullable=False)
+    score = Column(Numeric, nullable=False, default='0.00')
+    code_quality_rating = Column(Numeric)
+    status = Column(Enum('PENDING', " 'PASSED", " 'FAILED", " 'ERROR", name='PENDING_enum'), nullable=False, default="'pending'")
+    submitted_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class Quiz(Base):
-    """Quiz entity - Multiple-choice assessments."""
-    __tablename__ = "quizzes"
+    """
+    Multiple-choice assessments per topic.
+    """
+    __tablename__ = 'quiz'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), default=uuid4, unique=True, nullable=False)
-    topic_id = Column(Integer, ForeignKey("topics.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(255), nullable=False)
-    questions = Column(JSONB, nullable=False)  # List of {question, options, correct_index}
-    passing_score = Column(Float, default=70.0, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-
-    # Relationships
-    topic = relationship("Topic", back_populates="quizzes")
-    attempts = relationship("QuizAttempt", back_populates="quiz")
-
-    __table_args__ = (
-        Index("ix_quizzes_topic_id", "topic_id"),
-    )
+    topic_id = Column(Integer, nullable=False)
+    question = Column(Text, nullable=False)
+    options = Column(String(255), nullable=False)
+    correct_answer = Column(String(1), nullable=False)
+    explanation = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class QuizAttempt(Base):
-    """QuizAttempt entity - Quiz scores."""
-    __tablename__ = "quiz_attempts"
+    """
+    Student quiz attempts with scores.
+    """
+    __tablename__ = 'quizattempt'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    quiz_id = Column(Integer, ForeignKey("quizzes.id", ondelete="CASCADE"), nullable=False)
-    answers = Column(JSONB, nullable=False)  # List of selected option indices
-    score = Column(Float, nullable=False)
-    passed = Column(Boolean, nullable=False)
-    attempted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    # Relationships
-    user = relationship("User", back_populates="quiz_attempts")
-    quiz = relationship("Quiz", back_populates="attempts")
-
-    __table_args__ = (
-        Index("ix_quiz_attempts_user_id", "user_id"),
-        Index("ix_quiz_attempts_quiz_id", "quiz_id"),
-    )
+    user_id = Column(Integer, nullable=False)
+    topic_id = Column(Integer, nullable=False)
+    answers = Column(String(255), nullable=False)
+    correct_count = Column(Integer, nullable=False, default='0')
+    total_count = Column(Integer, nullable=False)
+    score = Column(Numeric, nullable=False, default='0.00')
+    completed_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class StruggleAlert(Base):
-    """StruggleAlert entity - Teacher notifications."""
-    __tablename__ = "struggle_alerts"
+    """
+    Detect and alert teachers when students are struggling.
+    """
+    __tablename__ = 'strugglealert'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), default=uuid4, unique=True, nullable=False)
-    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    topic_id = Column(Integer, ForeignKey("topics.id", ondelete="SET NULL"), nullable=True)
-    trigger = Column(Enum(StruggleTrigger), nullable=False)
-    trigger_data = Column(JSONB, nullable=True)  # Context about the trigger
-    is_resolved = Column(Boolean, default=False, nullable=False)
-    resolved_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
+    user_id = Column(Integer, nullable=False)
+    topic_id = Column(Integer)
+    trigger_type = Column(Enum('SAME_ERROR_3X', " 'STUCK_10MIN", " 'QUIZ_FAIL", " 'EXPLICIT_HELP", " 'FAILED_EXECUTIONS_5X", name='SAME_ERROR_3X_enum'), nullable=False)
+    trigger_data = Column(String(255), nullable=False)
+    severity = Column(Enum('LOW', " 'MEDIUM", " 'HIGH", name='LOW_enum'), nullable=False, default="'medium'")
+    resolved = Column(Boolean, nullable=False, default='FALSE')
+    resolved_by = Column(Integer)
+    resolved_at = Column(DateTime)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
-    # Relationships
-    student = relationship("User", back_populates="struggle_alerts", foreign_keys=[student_id])
 
-    __table_args__ = (
-        Index("ix_struggle_alerts_student_id", "student_id"),
-        Index("ix_struggle_alerts_is_resolved", "is_resolved"),
-        Index("ix_struggle_alerts_created_at", "created_at"),
-    )

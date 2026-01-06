@@ -1,178 +1,169 @@
 """
-Dapr client helper functions for state management and pub/sub.
+Dapr client helper functions for state management and pub/sub messaging.
 
-Per research.md decision 2: Dapr sidecar for PostgreSQL state and Kafka pub/sub.
+Simplifies common Dapr operations with error handling and logging.
 """
 
 import json
-from typing import Any
+from typing import Any, Dict, Optional
 
 import structlog
 from dapr.clients import DaprClient
-from dapr.clients.grpc._state import StateItem
+from dapr.clients.exceptions import DaprInternalError
 
-from backend.shared.correlation import get_correlation_id
-
-log = structlog.get_logger(__name__)
-
-# Default component names (configured in k8s/infrastructure/dapr/)
-DEFAULT_STATE_STORE = "statestore"  # PostgreSQL via Dapr
-DEFAULT_PUBSUB = "kafka-pubsub"  # Kafka via Dapr
+logger = structlog.get_logger()
 
 
 async def save_state(
+    state_store: str,
     key: str,
     value: Any,
-    store_name: str = DEFAULT_STATE_STORE,
-    metadata: dict[str, str] | None = None,
-) -> None:
+    dapr_client: Optional[DaprClient] = None
+) -> bool:
     """
-    Save state to Dapr state store (PostgreSQL).
+    Save state to Dapr state store.
 
     Args:
-        key: State key (e.g., "student:42:topic:2")
-        value: Value to store (will be JSON serialized)
-        store_name: Dapr state store component name
-        metadata: Optional metadata for the state operation
+        state_store: Name of the state store component
+        key: State key
+        value: State value (will be JSON serialized)
+        dapr_client: Optional DaprClient instance (creates new if None)
+
+    Returns:
+        True if successful, False otherwise
     """
-    with DaprClient() as client:
-        client.save_state(
-            store_name=store_name,
-            key=key,
-            value=json.dumps(value),
-            state_metadata=metadata,
-        )
-    log.debug("state_saved", key=key, store=store_name)
+    try:
+        if dapr_client:
+            dapr_client.save_state(state_store, key, json.dumps(value))
+        else:
+            with DaprClient() as client:
+                client.save_state(state_store, key, json.dumps(value))
+
+        logger.info("state_saved", state_store=state_store, key=key)
+        return True
+
+    except DaprInternalError as e:
+        logger.error("state_save_failed", state_store=state_store, key=key, error=str(e))
+        return False
 
 
 async def get_state(
+    state_store: str,
     key: str,
-    store_name: str = DEFAULT_STATE_STORE,
-) -> Any | None:
+    dapr_client: Optional[DaprClient] = None
+) -> Optional[Any]:
     """
     Get state from Dapr state store.
 
     Args:
-        key: State key to retrieve
-        store_name: Dapr state store component name
+        state_store: Name of the state store component
+        key: State key
+        dapr_client: Optional DaprClient instance (creates new if None)
 
     Returns:
-        Deserialized value or None if not found
+        Deserialized state value, or None if not found or error
     """
-    with DaprClient() as client:
-        state = client.get_state(store_name=store_name, key=key)
-        if state.data:
-            log.debug("state_retrieved", key=key, store=store_name)
-            return json.loads(state.data)
-    log.debug("state_not_found", key=key, store=store_name)
-    return None
+    try:
+        if dapr_client:
+            response = dapr_client.get_state(state_store, key)
+        else:
+            with DaprClient() as client:
+                response = client.get_state(state_store, key)
 
+        if response.data:
+            value = json.loads(response.data)
+            logger.info("state_retrieved", state_store=state_store, key=key)
+            return value
+        else:
+            logger.info("state_not_found", state_store=state_store, key=key)
+            return None
 
-async def delete_state(
-    key: str,
-    store_name: str = DEFAULT_STATE_STORE,
-) -> None:
-    """
-    Delete state from Dapr state store.
-
-    Args:
-        key: State key to delete
-        store_name: Dapr state store component name
-    """
-    with DaprClient() as client:
-        client.delete_state(store_name=store_name, key=key)
-    log.debug("state_deleted", key=key, store=store_name)
+    except DaprInternalError as e:
+        logger.error("state_get_failed", state_store=state_store, key=key, error=str(e))
+        return None
 
 
 async def publish_event(
+    pubsub_name: str,
     topic: str,
-    data: dict[str, Any],
-    pubsub_name: str = DEFAULT_PUBSUB,
-    partition_key: str | None = None,
-) -> None:
+    data: Dict[str, Any],
+    dapr_client: Optional[DaprClient] = None
+) -> bool:
     """
     Publish event to Kafka via Dapr pub/sub.
 
-    Per research.md decision 4: Use student_id as partition key for ordering.
+    Args:
+        pubsub_name: Name of the pub/sub component (e.g., "kafka-pubsub")
+        topic: Kafka topic name
+        data: Event data dictionary
+        dapr_client: Optional DaprClient instance (creates new if None)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        if dapr_client:
+            dapr_client.publish_event(
+                pubsub_name=pubsub_name,
+                topic_name=topic,
+                data=json.dumps(data),
+                data_content_type="application/json"
+            )
+        else:
+            with DaprClient() as client:
+                client.publish_event(
+                    pubsub_name=pubsub_name,
+                    topic_name=topic,
+                    data=json.dumps(data),
+                    data_content_type="application/json"
+                )
+
+        logger.info("event_published", pubsub=pubsub_name, topic=topic)
+        return True
+
+    except DaprInternalError as e:
+        logger.error("event_publish_failed", pubsub=pubsub_name, topic=topic, error=str(e))
+        return False
+
+
+async def invoke_service(
+    app_id: str,
+    method: str,
+    data: Optional[Dict[str, Any]] = None,
+    dapr_client: Optional[DaprClient] = None
+) -> Optional[Any]:
+    """
+    Invoke another service via Dapr service invocation.
 
     Args:
-        topic: Kafka topic name (e.g., "learning.response", "code.executed")
-        data: Event payload (will be JSON serialized)
-        pubsub_name: Dapr pub/sub component name
-        partition_key: Partition key for ordering (typically student_id)
+        app_id: Target service app ID
+        method: Method/endpoint to invoke
+        data: Optional request data
+        dapr_client: Optional DaprClient instance (creates new if None)
+
+    Returns:
+        Response data, or None if error
     """
-    # Add correlation ID to event data
-    correlation_id = get_correlation_id()
-    event_data = {
-        "correlation_id": correlation_id,
-        **data,
-    }
+    try:
+        if dapr_client:
+            response = dapr_client.invoke_method(
+                app_id=app_id,
+                method_name=method,
+                data=json.dumps(data) if data else None,
+                http_verb="POST"
+            )
+        else:
+            with DaprClient() as client:
+                response = client.invoke_method(
+                    app_id=app_id,
+                    method_name=method,
+                    data=json.dumps(data) if data else None,
+                    http_verb="POST"
+                )
 
-    # Build metadata with partition key if provided
-    metadata: dict[str, str] = {}
-    if partition_key:
-        metadata["partitionKey"] = str(partition_key)
+        logger.info("service_invoked", app_id=app_id, method=method)
+        return json.loads(response.data) if response.data else None
 
-    with DaprClient() as client:
-        client.publish_event(
-            pubsub_name=pubsub_name,
-            topic_name=topic,
-            data=json.dumps(event_data),
-            publish_metadata=metadata,
-        )
-
-    log.info(
-        "event_published",
-        topic=topic,
-        partition_key=partition_key,
-        pubsub=pubsub_name,
-    )
-
-
-async def bulk_save_state(
-    items: list[tuple[str, Any]],
-    store_name: str = DEFAULT_STATE_STORE,
-) -> None:
-    """
-    Save multiple state items in a single operation.
-
-    Args:
-        items: List of (key, value) tuples
-        store_name: Dapr state store component name
-    """
-    with DaprClient() as client:
-        state_items = [
-            StateItem(key=key, value=json.dumps(value))
-            for key, value in items
-        ]
-        client.save_bulk_state(store_name=store_name, states=state_items)
-    log.debug("bulk_state_saved", count=len(items), store=store_name)
-
-
-# Kafka topic constants per FR-012
-class KafkaTopics:
-    """Kafka topic names for EmberLearn events."""
-
-    # Learning events
-    LEARNING_QUERY = "learning.query"
-    LEARNING_RESPONSE = "learning.response"
-
-    # Code execution events
-    CODE_SUBMITTED = "code.submitted"
-    CODE_EXECUTED = "code.executed"
-
-    # Exercise events
-    EXERCISE_CREATED = "exercise.created"
-    EXERCISE_COMPLETED = "exercise.completed"
-
-    # Struggle detection events
-    STRUGGLE_DETECTED = "struggle.detected"
-    STRUGGLE_RESOLVED = "struggle.resolved"
-
-
-# Example usage:
-# await publish_event(
-#     topic=KafkaTopics.CODE_EXECUTED,
-#     data={"student_id": 42, "result": "success", "output": "Hello World"},
-#     partition_key="42"  # student_id for ordering
-# )
+    except DaprInternalError as e:
+        logger.error("service_invocation_failed", app_id=app_id, method=method, error=str(e))
+        return None

@@ -1,0 +1,54 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: emberlearn-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: emberlearn.local
+    http:
+      paths:
+      - path: /triage-agent
+        pathType: Prefix
+        backend:
+          service:
+            name: triage-agent-service
+            port:
+              number: 80
+      - path: /concepts-agent
+        pathType: Prefix
+        backend:
+          service:
+            name: concepts-agent-service
+            port:
+              number: 80
+      - path: /code-review-agent
+        pathType: Prefix
+        backend:
+          service:
+            name: code-review-agent-service
+            port:
+              number: 80
+      - path: /debug-agent
+        pathType: Prefix
+        backend:
+          service:
+            name: debug-agent-service
+            port:
+              number: 80
+      - path: /exercise-agent
+        pathType: Prefix
+        backend:
+          service:
+            name: exercise-agent-service
+            port:
+              number: 80
+      - path: /progress-agent
+        pathType: Prefix
+        backend:
+          service:
+            name: progress-agent-service
+            port:
+              number: 80

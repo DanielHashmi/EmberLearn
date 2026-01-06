@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: progress-agent-service
+  namespace: default
+  labels:
+    app: progress-agent
+spec:
+  type: ClusterIP
+  selector:
+    app: progress-agent
+  ports:
+  - port: 80
+    targetPort: 8005
+    protocol: TCP
+    name: http

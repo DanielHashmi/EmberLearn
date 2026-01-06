@@ -1,17 +1,26 @@
 ---
 name: fastapi-dapr-agent
-description: Scaffold FastAPI + Dapr + OpenAI Agent microservices
+description: Generate complete FastAPI + Dapr + OpenAI Agents SDK microservices with full production features including tools, handoffs, Kafka integration, and health checks
 ---
 
-# FastAPI Dapr Agent
+# FastAPI Dapr Agent Generator
 
 ## When to Use
-- Create AI agent service
-- Scaffold backend agents
+- Generate complete AI agent microservices
+- Create production-ready FastAPI + OpenAI Agents SDK services
+- Build agents with Dapr sidecars and Kafka pub/sub
 
 ## Instructions
-1. `python scripts/scaffold_agent.py <type>` (triage|concepts|code_review|debug|exercise|progress)
-2. `python scripts/generate_k8s_manifests.py <name> -i <image>`
-3. `python scripts/verify_structure.py <agent_dir>`
+1. `python scripts/generate_complete_agent.py <type>` where type is: triage, concepts, code_review, debug, exercise, or progress
+2. Output: Complete agent service with main.py, Dockerfile, requirements.txt
 
-See [REFERENCE.md](./REFERENCE.md) for agent patterns.
+## Output
+- Full FastAPI application with OpenAI Agents SDK
+- Complete API endpoints matching contracts
+- Kafka event publishing via Dapr
+- Structured logging with correlation IDs
+- Health and readiness checks
+- Production-ready Dockerfile
+- Minimal output: "✓ Generated complete [AgentName]"
+
+See [REFERENCE.md](./REFERENCE.md) for agent patterns and customization.

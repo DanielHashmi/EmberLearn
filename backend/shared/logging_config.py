@@ -1,7 +1,7 @@
 """
-Structured JSON logging configuration using structlog + orjson.
+Structured logging configuration using structlog and orjson.
 
-Per research.md decision 6: Cloud-native logging with correlation IDs.
+Provides JSON-formatted logs with correlation IDs for distributed tracing.
 """
 
 import logging
@@ -12,83 +12,48 @@ import orjson
 import structlog
 
 
-def orjson_dumps(v: Any, *, default: Any = None) -> str:
-    """Serialize to JSON string using orjson for performance."""
-    return orjson.dumps(v, default=default).decode("utf-8")
+def orjson_dumps(obj: Any, **kwargs) -> str:
+    """Serialize to JSON using orjson for performance."""
+    return orjson.dumps(obj).decode('utf-8')
 
 
-def configure_logging(service_name: str, log_level: str = "INFO") -> None:
+def configure_logging(service_name: str, level: str = "INFO"):
     """
-    Configure structlog for JSON logging to stdout.
+    Configure structured logging for the service.
 
     Args:
-        service_name: Name of the service (e.g., "triage-agent")
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        service_name: Name of the microservice (e.g., "triage_agent")
+        level: Logging level (DEBUG, INFO, WARNING, ERROR)
     """
-    # Configure standard library logging
+    # Configure standard logging
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
-        level=getattr(logging, log_level.upper()),
+        level=getattr(logging, level.upper()),
     )
 
     # Configure structlog
     structlog.configure(
         processors=[
-            # Add contextvars (correlation_id, etc.)
             structlog.contextvars.merge_contextvars,
-            # Add log level
-            structlog.stdlib.add_log_level,
-            # Add logger name
-            structlog.stdlib.add_logger_name,
-            # Add timestamp in ISO format
+            structlog.processors.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
-            # Add service name
-            structlog.processors.CallsiteParameterAdder(
-                [
-                    structlog.processors.CallsiteParameter.FUNC_NAME,
-                    structlog.processors.CallsiteParameter.LINENO,
-                ]
-            ),
-            # Add exception info
-            structlog.processors.format_exc_info,
-            # Render as JSON
             structlog.processors.JSONRenderer(serializer=orjson_dumps),
         ],
-        wrapper_class=structlog.stdlib.BoundLogger,
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, level.upper())
+        ),
         context_class=dict,
-        logger_factory=structlog.stdlib.LoggerFactory(),
+        logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-    # Bind service name to all logs
-    structlog.contextvars.bind_contextvars(service_name=service_name)
+    # Add service name to all logs
+    structlog.contextvars.bind_contextvars(service=service_name)
 
+    logger = structlog.get_logger()
+    logger.info("logging_configured", service=service_name, level=level)
 
-def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
-    """
-    Get a configured logger instance.
-
-    Args:
-        name: Optional logger name
-
-    Returns:
-        Configured structlog logger
-    """
-    return structlog.get_logger(name)
-
-
-# Example usage:
-# configure_logging("triage-agent", "INFO")
-# log = get_logger(__name__)
-# log.info("query_received", student_id=42, query_length=25)
-#
-# Output:
-# {
-#   "event": "query_received",
-#   "level": "info",
-#   "timestamp": "2026-01-05T10:30:45.123456Z",
-#   "service_name": "triage-agent",
-#   "student_id": 42,
-#   "query_length": 25
-# }
+    return logger

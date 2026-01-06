@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exercise-agent
+  namespace: default
+  labels:
+    app: exercise-agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: exercise-agent
+  template:
+    metadata:
+      labels:
+        app: exercise-agent
+      annotations:
+        dapr.io/enabled: 'true'
+        dapr.io/app-id: exercise-agent
+        dapr.io/app-port: '8004'
+        dapr.io/log-level: info
+    spec:
+      containers:
+      - name: exercise-agent
+        image: emberlearn/exercise-agent:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8004
+          name: http
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-secret
+              key: api-key
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8004
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8004
+          initialDelaySeconds: 10
+          periodSeconds: 5

@@ -1,7 +1,7 @@
 """
-FastAPI middleware for correlation ID injection and propagation.
+FastAPI middleware for correlation ID injection and request tracking.
 
-Ensures all requests have a correlation_id for distributed tracing.
+Ensures all logs and events can be traced across microservices.
 """
 
 import uuid
@@ -12,78 +12,49 @@ import structlog
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Context variable for correlation ID
-correlation_id_ctx: ContextVar[str] = ContextVar("correlation_id", default="")
+logger = structlog.get_logger()
 
-# Header name for correlation ID propagation
-CORRELATION_ID_HEADER = "X-Correlation-ID"
-
-
-def get_correlation_id() -> str:
-    """Get the current correlation ID from context."""
-    return correlation_id_ctx.get()
-
-
-def set_correlation_id(correlation_id: str) -> None:
-    """Set the correlation ID in context."""
-    correlation_id_ctx.set(correlation_id)
-    # Also bind to structlog context for automatic inclusion in logs
-    structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+# Context variable to store correlation ID for the current request
+_correlation_id_ctx_var: ContextVar[str] = ContextVar("correlation_id", default="")
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
     """
-    Middleware that extracts or generates correlation ID for each request.
+    Middleware that extracts or generates correlation IDs for request tracing.
 
-    - If X-Correlation-ID header exists, use it (for inter-service calls)
-    - Otherwise, generate a new UUID
-    - Bind to structlog context for automatic log inclusion
-    - Add to response headers for client visibility
+    Checks for X-Correlation-ID header, generates one if missing, and binds it
+    to structlog context for all logs during request processing.
     """
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Extract or generate correlation ID
-        correlation_id = request.headers.get(CORRELATION_ID_HEADER)
+        correlation_id = request.headers.get("X-Correlation-ID")
         if not correlation_id:
             correlation_id = str(uuid.uuid4())
 
-        # Set in context
-        set_correlation_id(correlation_id)
+        # Store in context variable
+        _correlation_id_ctx_var.set(correlation_id)
 
-        # Log request start
-        log = structlog.get_logger()
-        log.info(
-            "request_started",
-            method=request.method,
-            path=request.url.path,
-            client_host=request.client.host if request.client else None,
-        )
+        # Bind to structlog for all logs in this request
+        structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
 
         # Process request
         response = await call_next(request)
 
         # Add correlation ID to response headers
-        response.headers[CORRELATION_ID_HEADER] = correlation_id
+        response.headers["X-Correlation-ID"] = correlation_id
 
-        # Log request completion
-        log.info(
-            "request_completed",
-            method=request.method,
-            path=request.url.path,
-            status_code=response.status_code,
-        )
+        # Clear structlog context
+        structlog.contextvars.clear_contextvars()
 
         return response
 
 
-def create_correlation_id() -> str:
-    """Create a new correlation ID (for initiating new traces)."""
-    return str(uuid.uuid4())
+def get_correlation_id() -> str:
+    """
+    Get the correlation ID for the current request.
 
-
-# Example usage in FastAPI app:
-# from fastapi import FastAPI
-# from backend.shared.correlation import CorrelationIdMiddleware
-#
-# app = FastAPI()
-# app.add_middleware(CorrelationIdMiddleware)
+    Returns:
+        Correlation ID string, or empty string if not in request context
+    """
+    return _correlation_id_ctx_var.get()
