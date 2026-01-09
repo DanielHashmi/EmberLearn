@@ -1,9 +1,15 @@
 import type { Metadata } from "next";
-import "./styles/globals.css";
+import { Inter } from "next/font/google";
+import { ThemeProvider } from "@/components/shared/theme-provider";
+import { GlowBackground } from "@/components/shared/glow-background";
+import { NavHeader } from "@/components/shared/nav-header";
+import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "EmberLearn - AI-Powered Python Tutoring",
-  description: "Master Python with personalized AI tutors",
+  description: "Learn Python programming through conversational AI agents",
 };
 
 export default function RootLayout({
@@ -12,8 +18,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-gray-50">{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.variable}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <GlowBackground />
+          <NavHeader />
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

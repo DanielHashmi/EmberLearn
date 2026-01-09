@@ -1,15 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Disable SSR for Monaco Editor compatibility
-  experimental: {
-    // Enable server actions for form handling
-    serverActions: {
-      bodySizeLimit: '2mb',
-    },
+  swcMinify: true,
+  images: {
+    formats: ['image/avif', 'image/webp'],
   },
-  // Output standalone for Docker deployment
-  output: 'standalone',
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'framer-motion'],
+  },
 }
 
 module.exports = nextConfig
