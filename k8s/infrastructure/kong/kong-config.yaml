@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kong-config
+  namespace: default
+data:
+  kong.yml: |
+    _format_version: "3.0"
+    _transform: true
+
+    services:
+      - name: triage-service
+        url: http://triage-agent.default.svc.cluster.local
+        routes:
+          - name: triage-route
+            paths:
+              - /api/triage
+            strip_path: true
+
+      - name: concepts-service
+        url: http://concepts-agent.default.svc.cluster.local
+        routes:
+          - name: concepts-route
+            paths:
+              - /api/concepts
+            strip_path: true
+
+      - name: code-review-service
+        url: http://code-review-agent.default.svc.cluster.local
+        routes:
+          - name: code-review-route
+            paths:
+              - /api/code-review
+            strip_path: true
+
+      - name: debug-service
+        url: http://debug-agent.default.svc.cluster.local
+        routes:
+          - name: debug-route
+            paths:
+              - /api/debug
+            strip_path: true
+
+      - name: exercise-service
+        url: http://exercise-agent.default.svc.cluster.local
+        routes:
+          - name: exercise-route
+            paths:
+              - /api/exercise
+            strip_path: true
+
+      - name: progress-service
+        url: http://progress-agent.default.svc.cluster.local
+        routes:
+          - name: progress-route
+            paths:
+              - /api/progress
+            strip_path: true
+
+      - name: sandbox-service
+        url: http://sandbox.default.svc.cluster.local
+        routes:
+          - name: sandbox-route
+            paths:
+              - /api/sandbox
+            strip_path: true
+
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: kid
+          claims_to_verify:
+            - exp
+
+      - name: rate-limiting
+        config:
+          minute: 100
+          policy: local
+
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Correlation-ID
+          exposed_headers:
+            - X-Correlation-ID
+          credentials: true
+          max_age: 3600

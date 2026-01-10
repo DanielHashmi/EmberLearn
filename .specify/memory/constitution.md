@@ -313,19 +313,28 @@ System MUST alert teachers when:
 
 ### Hackathon Submission Requirements
 
-**Repository 1: skills-library**
+**Development Workflow** (Single Repository During Development):
+- All Skills are created in THIS repository at `.claude/skills/` for Claude Code to discover and use them
+- All application code (EmberLearn) is built in THIS repository using those Skills
+- At submission time, Skills are COPIED to create the separate skills-library repository
+
+**Repository 1: skills-library** (Created at Submission)
+- Created by copying `.claude/skills/` from EmberLearn repository
 - Structure: `.claude/skills/<skill-name>/SKILL.md` + `scripts/` + `REFERENCE.md`
 - Minimum 7 skills (agents-md-gen, kafka-k8s-setup, postgres-k8s-setup, fastapi-dapr-agent, mcp-code-execution, nextjs-k8s-deploy, docusaurus-deploy)
 - Each skill MUST be tested with Claude Code AND Goose
-- README.md MUST document skill usage and development process
+- README.md MUST document skill usage, installation instructions (copying to user's ~/.claude/skills/), and development process
+- Submit to hackathon form as separate repository
 
 **Repository 2: EmberLearn (this repository)**
+- Contains BOTH Skills (`.claude/skills/`) AND application code during development
 - Complete AI-powered Python tutoring application built using Skills
-- Commit history MUST show agentic workflow
+- Commit history MUST show agentic workflow (e.g., "Claude: deployed Kafka using kafka-k8s-setup skill")
 - All 6 AI agents MUST be functional (Triage, Concepts, Code Review, Debug, Exercise, Progress)
 - Kafka, Dapr, PostgreSQL, Kong MUST be deployed
 - Frontend MUST include Monaco Editor integration
 - AGENTS.md MUST be present and comprehensive
+- Submit to hackathon form with `.claude/skills/` still present to show Skills were used
 
 **Submission Form**: https://forms.gle/Mrhf9XZsuXN4rWJf7
 

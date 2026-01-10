@@ -1,0 +1,17 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+  namespace: default
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      value: "host=postgresql.default.svc.cluster.local user=emberlearn password=emberlearn port=5432 dbname=emberlearn sslmode=disable"
+    - name: tableName
+      value: "dapr_state"
+    - name: keyPrefix
+      value: "name"
+    - name: actorStateStore
+      value: "true"

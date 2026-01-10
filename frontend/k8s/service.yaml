@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: emberlearn-frontend
+  namespace: default
+spec:
+  selector:
+    app: emberlearn-frontend
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: emberlearn-frontend-nodeport
+  namespace: default
+spec:
+  selector:
+    app: emberlearn-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30000
+  type: NodePort
