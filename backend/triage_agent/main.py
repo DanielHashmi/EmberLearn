@@ -1,177 +1,198 @@
 """
-TriageAgent - FastAPI + Dapr + OpenAI Agents SDK microservice.
+Triage Agent - FastAPI Service
 
-Routes student queries to appropriate specialist agents
+Routes incoming queries to the appropriate specialist agent:
+- Concepts Agent: explanations, "what is", "how does"
+- Code Review Agent: code analysis, "review my code"
+- Debug Agent: errors, exceptions, "why doesn't this work"
+- Exercise Agent: practice, challenges, "give me an exercise"
+- Progress Agent: progress, mastery, "how am I doing"
 """
 
-import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import structlog
-from dapr.clients import DaprClient
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from openai import AsyncOpenAI
-from agents import Agent, Runner
-from pydantic import BaseModel
 
 import sys
-sys.path.append('../..')
+sys.path.insert(0, '..')
 
-from shared.logging_config import configure_logging
-from shared.correlation import CorrelationIdMiddleware, get_correlation_id
-from shared.dapr_client import publish_event, get_state, save_state
+from shared.config import settings
+from shared.logging_config import setup_logging, get_logger
+from shared.correlation import CorrelationMiddleware
+from shared.models import ChatRequest, ChatResponse, AgentType, ErrorResponse
+from shared.dapr_client import get_dapr_client
 
+from .agent import TriageAgent
 
-# Configure logging
-configure_logging("triage_agent")
-logger = structlog.get_logger()
+# Setup logging
+setup_logging(service_name="triage-agent")
+logger = get_logger(__name__)
 
-# OpenAI client
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
-
-# Define the agent
-triage_agent = Agent(
-    name="TriageAgent",
-    instructions="""Analyze the student's query and determine which specialist can best help:
-- CONCEPTS: Questions about Python concepts, syntax, or theory
-- CODE_REVIEW: Requests for code feedback, style improvements, or bug spotting
-- DEBUG: Help finding and fixing errors in code
-- EXERCISE: Requests for coding challenges or practice problems
-- PROGRESS: Questions about their learning progress or mastery scores
-
-Respond with the routing decision and a brief explanation.""",
-    model="gpt-4o-mini",
-    # Handoffs to specialist agents
-    handoffs=['concepts', 'code_review', 'debug', 'exercise', 'progress'],
-)
+# Initialize agent
+triage_agent: Optional[TriageAgent] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
-    logger.info("triage_agent_starting")
+    """Application lifespan manager."""
+    global triage_agent
+    
+    logger.info("Starting Triage Agent service...")
+    
+    # Initialize agent
+    triage_agent = TriageAgent()
+    
+    logger.info("Triage Agent service started successfully")
+    
     yield
-    logger.info("triage_agent_stopping")
+    
+    # Cleanup
+    logger.info("Shutting down Triage Agent service...")
+    dapr = get_dapr_client()
+    await dapr.close()
+    logger.info("Triage Agent service stopped")
 
 
+# Create FastAPI app
 app = FastAPI(
-    title="TriageAgent Service",
-    description="Routes student queries to appropriate specialist agents",
+    title="EmberLearn Triage Agent",
+    description="Routes queries to specialist AI agents",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Middleware
-app.add_middleware(CorrelationIdMiddleware)
+# Add middleware
+app.add_middleware(CorrelationMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Request/Response models
-class QueryRequest(BaseModel):
-    student_id: int
-    message: str
-    correlation_id: Optional[str] = None
-
-
-class QueryResponse(BaseModel):
-    correlation_id: str
-    status: str
-    response: str
-    agent_used: str
-
+# ==================== Health Endpoints ====================
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Kubernetes probes."""
-    return {"status": "healthy", "service": "triage_agent"}
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "triage-agent"}
 
 
 @app.get("/ready")
 async def readiness_check():
-    """Readiness check - verify dependencies."""
-    # Check OpenAI API key
-    if not os.getenv("OPENAI_API_KEY"):
-        return {"status": "not_ready", "reason": "Missing OPENAI_API_KEY"}, 503
-    return {"status": "ready", "service": "triage_agent"}
+    """Readiness check endpoint."""
+    # Check Dapr sidecar
+    dapr = get_dapr_client()
+    dapr_healthy = await dapr.health_check()
+    
+    if not dapr_healthy:
+        raise HTTPException(status_code=503, detail="Dapr sidecar not ready")
+    
+    return {"status": "ready", "service": "triage-agent"}
 
 
-@app.post("/query", response_model=QueryResponse)
-async def handle_query(request: QueryRequest):
-    """Handle incoming query and generate response using OpenAI Agent."""
-    correlation_id = request.correlation_id or get_correlation_id()
+# ==================== Chat Endpoints ====================
 
-    logger.info(
-        "query_received",
-        student_id=request.student_id,
-        message_preview=request.message[:50],
-        correlation_id=correlation_id,
-    )
-
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Process a chat message and route to appropriate agent.
+    
+    The triage agent analyzes the message and determines which
+    specialist agent should handle it.
+    """
+    global triage_agent
+    
+    if not triage_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
     try:
-        # Run the agent
-        result = await Runner.run(
-            triage_agent,
-            input=request.message,
-        )
-
-        response_text = result.final_output
-
-        # Publish event to Kafka via Dapr
-        event_data = {
-            "student_id": request.student_id,
-            "agent": "triage",
-            "query": request.message,
-            "response": response_text,
-            "correlation_id": correlation_id,
-        }
-
-        for topic in ['learning.events']:
-            await publish_event(
-                pubsub_name="kafka-pubsub",
-                topic=topic,
-                data=event_data
-            )
-
         logger.info(
-            "query_completed",
-            student_id=request.student_id,
-            correlation_id=correlation_id,
+            "processing_chat_request",
+            user_id=request.user_id,
+            message_length=len(request.message),
         )
-
-        return QueryResponse(
-            correlation_id=correlation_id,
-            status="success",
-            response=response_text,
-            agent_used="triage"
+        
+        # Process with triage agent
+        response = await triage_agent.process(request)
+        
+        logger.info(
+            "chat_request_processed",
+            user_id=request.user_id,
+            routed_to=response.agent_type,
         )
-
+        
+        return response
+        
     except Exception as e:
-        logger.error(
-            "query_failed",
-            student_id=request.student_id,
-            error=str(e),
-            correlation_id=correlation_id,
-        )
+        logger.exception("chat_request_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
-        # Return fallback response
-        return QueryResponse(
-            correlation_id=correlation_id,
-            status="error",
-            response="I'm having trouble processing your request right now. Please try again.",
-            agent_used="triage"
-        )
 
+@app.post("/classify")
+async def classify_query(request: ChatRequest):
+    """
+    Classify a query without routing to specialist.
+    
+    Returns the classification result showing which agent
+    would handle this query.
+    """
+    global triage_agent
+    
+    if not triage_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
+    try:
+        classification = await triage_agent.classify(request.message)
+        
+        return {
+            "message": request.message,
+            "classification": classification,
+            "agent_type": classification["agent_type"],
+            "confidence": classification["confidence"],
+        }
+        
+    except Exception as e:
+        logger.exception("classification_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Dapr Subscription Endpoints ====================
+
+@app.post("/dapr/subscribe")
+async def dapr_subscribe():
+    """Dapr pubsub subscription configuration."""
+    return [
+        {
+            "pubsubname": settings.dapr_pubsub_name,
+            "topic": settings.kafka_topic_learning,
+            "route": "/events/learning",
+        }
+    ]
+
+
+@app.post("/events/learning")
+async def handle_learning_event(event: dict):
+    """Handle learning events from Kafka."""
+    logger.info("received_learning_event", event_type=event.get("type"))
+    
+    # Process event (e.g., update context, trigger proactive help)
+    # For now, just acknowledge
+    return {"status": "SUCCESS"}
+
+
+# ==================== Run Server ====================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+    uvicorn.run(
+        "main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.debug,
+    )

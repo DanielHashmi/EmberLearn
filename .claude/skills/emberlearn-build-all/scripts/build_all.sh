@@ -2,154 +2,193 @@
 set -euo pipefail
 
 # EmberLearn Build All - Master orchestrator script
-# Coordinates all Skills to build complete application autonomously
+# Goal: single prompt -> regenerate current EmberLearn project into a fresh output directory
 
 SKILLS_DIR=".claude/skills"
 ROOT_DIR="$(pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "=========================================="
-echo "EmberLearn Build All - Autonomous Build"
-echo "=========================================="
-echo ""
+# -----------------------
+# Python launcher
+# -----------------------
+PYTHON_CMD=""
+PYTHON_ARGS=()
 
-# Phase 1: Generate Backend Code
-echo "Phase 1: Generating Backend Code..."
-echo "-----------------------------------"
+try_python() {
+  local cmd="$1"; shift
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    return 1
+  fi
+  # Some Windows environments have a Microsoft Store alias `python` that prints a message.
+  # We only accept interpreters that can successfully execute a trivial script.
+  # shellcheck disable=SC2068
+  "$cmd" $@ -c "print('ok')" >/dev/null 2>&1
+}
 
-# 1.1 Generate database models
-echo "→ Generating database models..."
-python3 "$SKILLS_DIR/database-schema-gen/scripts/generate_models.py" \
-    "specs/001-hackathon-iii/data-model.md" \
-    "backend/database/models.py"
-echo "✓ Database models generated"
-
-# 1.2 Generate shared utilities
-echo "→ Generating shared utilities..."
-python3 "$SKILLS_DIR/shared-utils-gen/scripts/generate_logging.py" backend/shared
-python3 "$SKILLS_DIR/shared-utils-gen/scripts/generate_middleware.py" backend/shared
-python3 "$SKILLS_DIR/shared-utils-gen/scripts/generate_dapr_helpers.py" backend/shared
-python3 "$SKILLS_DIR/shared-utils-gen/scripts/generate_pydantic_models.py" \
-    "specs/001-hackathon-iii/contracts" \
-    "backend/shared/models.py"
-echo "✓ Shared utilities generated"
-
-# 1.3 Generate all 6 AI agents
-echo "→ Generating AI agents..."
-AGENTS=("triage" "concepts" "code_review" "debug" "exercise" "progress")
-for agent in "${AGENTS[@]}"; do
-    python3 "$SKILLS_DIR/fastapi-dapr-agent/scripts/generate_complete_agent.py" \
-        "$agent" \
-        "backend/${agent}_agent"
-done
-echo "✓ All 6 AI agents generated"
-
-echo ""
-
-# Phase 2: Generate Frontend Code
-echo "Phase 2: Generating Frontend Code..."
-echo "------------------------------------"
-
-echo "→ Generating complete Next.js frontend..."
-python3 "$SKILLS_DIR/nextjs-frontend-gen/scripts/generate_complete_frontend.py" frontend
-echo "✓ Frontend generated"
-
-echo ""
-
-# Phase 3: Deploy Infrastructure
-echo "Phase 3: Deploying Infrastructure..."
-echo "------------------------------------"
-
-# 3.1 Deploy PostgreSQL
-echo "→ Deploying PostgreSQL..."
-bash "$SKILLS_DIR/postgres-k8s-setup/scripts/deploy_postgres.sh"
-python3 "$SKILLS_DIR/postgres-k8s-setup/scripts/verify_postgres.py"
-echo "✓ PostgreSQL deployed"
-
-# 3.2 Deploy Kafka
-echo "→ Deploying Kafka..."
-bash "$SKILLS_DIR/kafka-k8s-setup/scripts/deploy_kafka.sh"
-python3 "$SKILLS_DIR/kafka-k8s-setup/scripts/verify_kafka.py"
-echo "✓ Kafka deployed"
-
-# 3.3 Deploy Dapr
-echo "→ Deploying Dapr control plane..."
-bash "$SKILLS_DIR/dapr-deploy/scripts/deploy_dapr.sh"
-bash "$SKILLS_DIR/dapr-deploy/scripts/configure_components.sh"
-python3 "$SKILLS_DIR/dapr-deploy/scripts/verify_dapr.py"
-echo "✓ Dapr deployed and configured"
-
-echo ""
-
-# Phase 4: Generate and Deploy Kubernetes Manifests
-echo "Phase 4: Deploying Application Services..."
-echo "------------------------------------------"
-
-# 4.1 Generate K8s manifests
-echo "→ Generating Kubernetes manifests..."
-python3 "$SKILLS_DIR/k8s-manifest-gen/scripts/generate_manifests.py"
-echo "✓ Manifests generated"
-
-# 4.2 Build Docker images for all agents
-echo "→ Building Docker images..."
-for agent in "${AGENTS[@]}"; do
-    echo "  Building ${agent}_agent..."
-    docker build -t "emberlearn/${agent}-agent:latest" "backend/${agent}_agent" 2>&1 | grep -E "(Successfully|ERROR)" || true
-done
-echo "✓ Docker images built"
-
-# 4.3 Deploy to Kubernetes
-echo "→ Deploying services to Kubernetes..."
-
-# WSL/Windows compatibility
-if command -v minikube.exe &> /dev/null; then
-    KUBECTL="minikube.exe kubectl --"
+if try_python python3; then
+  PYTHON_CMD="python3"
+elif try_python python; then
+  PYTHON_CMD="python"
+elif try_python py -3; then
+  PYTHON_CMD="py"
+  PYTHON_ARGS=("-3")
 else
-    KUBECTL="kubectl"
+  echo "✗ Python not found (need python3, python, or py -3 on PATH)" >&2
+  exit 127
 fi
 
-# Apply secrets first (will need manual OPENAI_API_KEY update)
-$KUBECTL apply -f k8s/manifests/secrets.yaml
-$KUBECTL apply -f k8s/manifests/configmap.yaml
+pyexec() {
+  "$PYTHON_CMD" "${PYTHON_ARGS[@]}" "$@"
+}
 
-# Deploy all agent services
-for agent in "${AGENTS[@]}"; do
-    $KUBECTL apply -f "k8s/manifests/${agent}-agent-deployment.yaml"
-    $KUBECTL apply -f "k8s/manifests/${agent}-agent-service.yaml"
-done
+# -----------------------
+# Config (env override)
+# -----------------------
+OUTPUT_DIR="${OUTPUT_DIR:-"./_regen/emberlearn-$(date +%Y%m%d-%H%M%S)"}"
+SPEC_DIR="${SPEC_DIR:-"specs/002-hackathon-iii-updated"}"
+MODE="${MODE:-both}"              # local|k8s|both
+DEPLOY_K8S="${DEPLOY_K8S:-0}"      # 0|1
+REGENERATE="${REGENERATE:-0}"      # 0|1 (0 = copy current working project for functional exactness)
 
-# Deploy ingress
-$KUBECTL apply -f k8s/manifests/ingress.yaml
+AGENTS=("triage" "concepts" "code_review" "debug" "exercise" "progress")
 
-echo "✓ Services deployed to Kubernetes"
+# kubectl selection (WSL/Windows compatibility)
+if command -v minikube.exe &> /dev/null; then
+  KUBECTL="minikube.exe kubectl --"
+else
+  KUBECTL="kubectl"
+fi
 
-echo ""
-
-# Phase 5: Verify Deployment
-echo "Phase 5: Verifying Deployment..."
-echo "--------------------------------"
-
-echo "→ Waiting for pods to be ready..."
-for agent in "${AGENTS[@]}"; do
-    $KUBECTL wait --for=condition=ready pod -l app="${agent}-agent" --timeout=120s 2>/dev/null || echo "  ${agent}-agent: pending..."
-done
-
-echo ""
+echo "Using Python: ${PYTHON_CMD} ${PYTHON_ARGS[*]:-}"
 echo "=========================================="
-echo "✓ EmberLearn built and deployed"
+echo "EmberLearn Build All - Regenerate Project"
 echo "=========================================="
 echo ""
-echo "Summary:"
-echo "  - 9 database models generated"
-echo "  - 4 shared utilities generated"
-echo "  - 6 AI agents generated (triage, concepts, code_review, debug, exercise, progress)"
-echo "  - Complete Next.js frontend with Monaco Editor"
-echo "  - Infrastructure deployed (PostgreSQL, Kafka, Dapr)"
-echo "  - All services deployed to Kubernetes"
+echo "Config:"
+echo "  OUTPUT_DIR=${OUTPUT_DIR}"
+echo "  SPEC_DIR=${SPEC_DIR}"
+echo "  MODE=${MODE}"
+echo "  DEPLOY_K8S=${DEPLOY_K8S}"
+echo "  REGENERATE=${REGENERATE}"
 echo ""
-echo "Next Steps:"
-echo "  1. Update OpenAI API key: kubectl edit secret openai-secret"
-echo "  2. Access frontend: minikube service triage-agent-service"
-echo "  3. View logs: kubectl logs -l app=triage-agent -f"
+
+mkdir -p "${OUTPUT_DIR}"
+
+# -----------------------
+# Phase 0: Copy project
+# -----------------------
+echo "Phase 0: Copying current working project..."
+echo "------------------------------------------"
+pyexec "${SCRIPT_DIR}/copy_project.py" \
+  --src "${ROOT_DIR}" \
+  --dst "${OUTPUT_DIR}" \
+  --mode "${MODE}"
+echo "OK Copied project into ${OUTPUT_DIR}"
 echo ""
-echo "Token Efficiency: ~98% reduction (29 files, 3,650+ lines, 0 manual coding)"
+
+# -----------------------
+# Phase 1: Regeneration
+# -----------------------
+echo "Phase 1: Regenerating entire project from skills..."
+echo "------------------------------------------------------"
+
+# 1. Root files
+echo "→ Generating root files..."
+pyexec "$SKILLS_DIR/emberlearn-root-gen/scripts/generate_root.py"
+
+# 2. Backend Shared
+echo "→ Generating backend shared utilities..."
+pyexec "$SKILLS_DIR/shared-utils-gen/scripts/generate_shared.py"
+
+# 3. Backend Database Models
+echo "→ Generating database models..."
+pyexec "$SKILLS_DIR/database-schema-gen/scripts/generate_models.py"
+
+# 4. Backend Core (Monolith)
+echo "→ Generating backend core monolith..."
+pyexec "$SKILLS_DIR/backend-core-gen/scripts/generate_core.py"
+
+# 5. Microservice Agents
+echo "→ Generating agent microservices..."
+for agent in "${AGENTS[@]}"; do
+  pyexec "$SKILLS_DIR/fastapi-dapr-agent/scripts/generate_complete_agent.py" \
+    "$agent" \
+    "backend/${agent}_agent"
+done
+
+# 6. Frontend
+echo "→ Generating Next.js production frontend..."
+pyexec "$SKILLS_DIR/nextjs-production-gen/scripts/generate_complete_app.py" \
+  --output-dir "frontend"
+
+# 7. K8s Manifests
+echo "→ Generating Kubernetes manifests..."
+pyexec "$SKILLS_DIR/k8s-manifest-gen/scripts/generate_manifests.py"
+
+echo "OK Project regenerated successfully"
 echo ""
+
+
+# -----------------------
+# Phase 2: Verify output
+# -----------------------
+echo "Phase 2: Verifying regeneration output..."
+echo "----------------------------------------"
+pyexec "${SCRIPT_DIR}/verify_regeneration.py" "${OUTPUT_DIR}"
+echo ""
+
+# -----------------------
+# Phase 3: Optional K8s deploy
+# -----------------------
+if [[ "${DEPLOY_K8S}" == "1" && ( "${MODE}" == "k8s" || "${MODE}" == "both" ) ]]; then
+  echo "Phase 3: Deploying to Kubernetes (optional)..."
+  echo "---------------------------------------------"
+
+  echo "→ Deploying PostgreSQL..."
+  bash "$SKILLS_DIR/postgres-k8s-setup/scripts/check_prereqs.sh"
+  bash "$SKILLS_DIR/postgres-k8s-setup/scripts/deploy_postgres.sh"
+  pyexec "$SKILLS_DIR/postgres-k8s-setup/scripts/run_migrations.py" || true
+  pyexec "$SKILLS_DIR/postgres-k8s-setup/scripts/verify_schema.py"
+  echo "OK PostgreSQL deployed"
+
+  echo "→ Deploying Kafka..."
+  bash "$SKILLS_DIR/kafka-k8s-setup/scripts/check_prereqs.sh"
+  bash "$SKILLS_DIR/kafka-k8s-setup/scripts/deploy_kafka.sh"
+  pyexec "$SKILLS_DIR/kafka-k8s-setup/scripts/create_topics.py" || true
+  pyexec "$SKILLS_DIR/kafka-k8s-setup/scripts/verify_kafka.py"
+  echo "OK Kafka deployed"
+
+  echo "→ Deploying Dapr control plane + components..."
+  bash "$SKILLS_DIR/dapr-deploy/scripts/deploy_dapr.sh"
+  bash "$SKILLS_DIR/dapr-deploy/scripts/configure_components.sh"
+  pyexec "$SKILLS_DIR/dapr-deploy/scripts/verify_dapr.py"
+  echo "OK Dapr deployed and configured"
+
+  echo "→ Applying manifests from output dir..."
+  $KUBECTL apply -f "${OUTPUT_DIR}/k8s/manifests/secrets.yaml"
+  $KUBECTL apply -f "${OUTPUT_DIR}/k8s/manifests/configmap.yaml"
+  for agent in "${AGENTS[@]}"; do
+    $KUBECTL apply -f "${OUTPUT_DIR}/k8s/manifests/${agent}-agent-deployment.yaml"
+    $KUBECTL apply -f "${OUTPUT_DIR}/k8s/manifests/${agent}-agent-service.yaml"
+  done
+  $KUBECTL apply -f "${OUTPUT_DIR}/k8s/manifests/ingress.yaml"
+
+  echo "→ Waiting for pods to be ready..."
+  for agent in "${AGENTS[@]}"; do
+    $KUBECTL wait --for=condition=ready pod -l app="${agent}-agent" --timeout=180s 2>/dev/null || echo "  ${agent}-agent: pending..."
+  done
+
+  echo "OK K8s deploy attempted"
+  echo ""
+fi
+
+echo "=========================================="
+echo "OK EmberLearn regeneration complete"
+echo "=========================================="
+echo "Output directory: ${OUTPUT_DIR}"
+if [[ "${DEPLOY_K8S}" != "1" ]]; then
+  echo "Note: K8s deployment skipped (set DEPLOY_K8S=1 to deploy)."
+fi
+
+# Minimal output line for hackathon logs
+echo "OK EmberLearn regenerated"

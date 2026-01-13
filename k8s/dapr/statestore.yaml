@@ -1,0 +1,37 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: postgres-statestore
+  namespace: emberlearn
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: emberlearn-secrets
+        key: database-url
+    - name: tableName
+      value: "dapr_state"
+    - name: keyPrefix
+      value: "emberlearn"
+    - name: actorStateStore
+      value: "true"
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: redis-statestore
+  namespace: emberlearn
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: "redis-master.emberlearn.svc.cluster.local:6379"
+    - name: redisPassword
+      secretKeyRef:
+        name: emberlearn-secrets
+        key: redis-password
+    - name: keyPrefix
+      value: "emberlearn"

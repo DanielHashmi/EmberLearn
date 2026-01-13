@@ -1,0 +1,72 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: kafka-pubsub
+  namespace: emberlearn
+spec:
+  type: pubsub.kafka
+  version: v1
+  metadata:
+    - name: brokers
+      value: "kafka.kafka.svc.cluster.local:9092"
+    - name: consumerGroup
+      value: "emberlearn-group"
+    - name: authType
+      value: "none"
+    - name: maxMessageBytes
+      value: "1048576"
+    - name: consumeRetryInterval
+      value: "100ms"
+---
+apiVersion: dapr.io/v1alpha1
+kind: Subscription
+metadata:
+  name: learning-events-subscription
+  namespace: emberlearn
+spec:
+  pubsubname: kafka-pubsub
+  topic: learning.events
+  route: /events/learning
+  scopes:
+    - progress-agent
+    - triage-agent
+---
+apiVersion: dapr.io/v1alpha1
+kind: Subscription
+metadata:
+  name: code-events-subscription
+  namespace: emberlearn
+spec:
+  pubsubname: kafka-pubsub
+  topic: code.events
+  route: /events/code
+  scopes:
+    - progress-agent
+    - debug-agent
+    - code-review-agent
+---
+apiVersion: dapr.io/v1alpha1
+kind: Subscription
+metadata:
+  name: exercise-events-subscription
+  namespace: emberlearn
+spec:
+  pubsubname: kafka-pubsub
+  topic: exercise.events
+  route: /events/exercise
+  scopes:
+    - progress-agent
+    - exercise-agent
+---
+apiVersion: dapr.io/v1alpha1
+kind: Subscription
+metadata:
+  name: struggle-alerts-subscription
+  namespace: emberlearn
+spec:
+  pubsubname: kafka-pubsub
+  topic: struggle.alerts
+  route: /events/struggle
+  scopes:
+    - triage-agent
+    - progress-agent

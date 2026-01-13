@@ -1,175 +1,429 @@
 """
-SQLAlchemy ORM models for EmberLearn database.
+SQLAlchemy ORM Models
 
-Auto-generated from data-model.md specification.
+Database models for the EmberLearn platform.
+Supports PostgreSQL (Neon) with async operations.
 """
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+from uuid import uuid4
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Float, ForeignKey,
-    Integer, Numeric, String, Text, func, text
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    JSON,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 
-Base = declarative_base()
 
+class Base(DeclarativeBase):
+    """Base class for all ORM models."""
+    pass
+
+
+def generate_uuid() -> str:
+    """Generate a new UUID string."""
+    return str(uuid4())
+
+
+# ==================== User Model ====================
 
 class User(Base):
-    """
-    Students, teachers, and admins with authentication and profile data.
-    """
-    __tablename__ = 'user'
+    """User account model."""
+    
+    __tablename__ = "users"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # Profile
+    display_name: Mapped[Optional[str]] = mapped_column(String(100))
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(500))
+    role: Mapped[str] = mapped_column(String(20), default="student")  # student, teacher, admin
+    
+    # Gamification
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    level: Mapped[int] = mapped_column(Integer, default=1)
+    streak_days: Mapped[int] = mapped_column(Integer, default=0)
+    last_activity_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    progress: Mapped[list["Progress"]] = relationship("Progress", back_populates="user", cascade="all, delete-orphan")
+    submissions: Mapped[list["ExerciseSubmission"]] = relationship("ExerciseSubmission", back_populates="user", cascade="all, delete-orphan")
+    chat_sessions: Mapped[list["ChatSession"]] = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    achievements: Mapped[list["UserAchievement"]] = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
+    struggle_alerts: Mapped[list["StruggleAlert"]] = relationship("StruggleAlert", back_populates="user", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_users_role", "role"),
+        Index("ix_users_level", "level"),
+    )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
-    email = Column(String(255), nullable=False, unique=True)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(Enum('STUDENT', " 'TEACHER", " 'ADMIN", name='STUDENT_enum'), nullable=False, default="'student'")
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now())
-    last_login_at = Column(DateTime)
 
+# ==================== Topic Model ====================
 
 class Topic(Base):
-    """
-    Python curriculum modules (8 topics from spec: Basics, Control Flow, Data Structures, Functions, OOP, Files, Errors, Libraries).
-    """
-    __tablename__ = 'topic'
+    """Python curriculum topic."""
+    
+    __tablename__ = "topics"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    icon: Mapped[Optional[str]] = mapped_column(String(10))  # Emoji
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Content
+    concepts: Mapped[Optional[dict]] = mapped_column(JSON)  # List of concepts covered
+    prerequisites: Mapped[Optional[list]] = mapped_column(JSON)  # List of prerequisite topic slugs
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    exercises: Mapped[list["Exercise"]] = relationship("Exercise", back_populates="topic", cascade="all, delete-orphan")
+    progress: Mapped[list["Progress"]] = relationship("Progress", back_populates="topic", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_topics_order", "order"),
+    )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    slug = Column(String(100), nullable=False, unique=True)
-    name = Column(String(100), nullable=False)
-    description = Column(Text, nullable=False)
-    order = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
-
-class Progress(Base):
-    """
-    Track student mastery per topic using weighted formula.
-    """
-    __tablename__ = 'progress'
-
-    user_id = Column(Integer, nullable=False)
-    topic_id = Column(Integer, nullable=False)
-    exercise_completion_pct = Column(Numeric, nullable=False, default='0.00')
-    quiz_score_avg = Column(Numeric, nullable=False, default='0.00')
-    code_quality_avg = Column(Numeric, nullable=False, default='0.00')
-    consistency_score = Column(Numeric, nullable=False, default='0.00')
-    mastery_score = Column(Numeric, nullable=False, default='0.00')
-    mastery_level = Column(Enum('BEGINNER', " 'LEARNING", " 'PROFICIENT", " 'MASTERED", name='BEGINNER_enum'), nullable=False, default="'beginner'")
-    last_activity_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now())
-
+# ==================== Exercise Model ====================
 
 class Exercise(Base):
-    """
-    Coding challenges generated by Exercise agent or pre-defined.
-    """
-    __tablename__ = 'exercise'
+    """Coding exercise/challenge."""
+    
+    __tablename__ = "exercises"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id"), nullable=False, index=True)
+    
+    # Content
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    starter_code: Mapped[str] = mapped_column(Text, default="# Write your code here\n")
+    solution_code: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # Metadata
+    difficulty: Mapped[str] = mapped_column(String(20), default="medium")  # easy, medium, hard
+    estimated_time_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    xp_reward: Mapped[int] = mapped_column(Integer, default=100)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Hints (JSON array)
+    hints: Mapped[Optional[list]] = mapped_column(JSON)
+    
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    topic: Mapped["Topic"] = relationship("Topic", back_populates="exercises")
+    test_cases: Mapped[list["TestCase"]] = relationship("TestCase", back_populates="exercise", cascade="all, delete-orphan")
+    submissions: Mapped[list["ExerciseSubmission"]] = relationship("ExerciseSubmission", back_populates="exercise", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_exercises_difficulty", "difficulty"),
+        Index("ix_exercises_topic_order", "topic_id", "order"),
+    )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
-    topic_id = Column(Integer, nullable=False)
-    title = Column(String(200), nullable=False)
-    description = Column(Text, nullable=False)
-    difficulty = Column(Enum('EASY', " 'MEDIUM", " 'HARD", name='EASY_enum'), nullable=False)
-    starter_code = Column(Text, nullable=False, default="''")
-    solution_code = Column(Text, nullable=False)
-    created_by = Column(Integer)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
+# ==================== TestCase Model ====================
 
 class TestCase(Base):
-    """
-    Validation criteria for exercises (input → expected output).
-    """
-    __tablename__ = 'testcase'
+    """Test case for an exercise."""
+    
+    __tablename__ = "test_cases"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    exercise_id: Mapped[str] = mapped_column(String(36), ForeignKey("exercises.id"), nullable=False, index=True)
+    
+    # Test data
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_data: Mapped[str] = mapped_column(Text, default="")
+    expected_output: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Metadata
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Relationships
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="test_cases")
+    
+    __table_args__ = (
+        Index("ix_test_cases_exercise_order", "exercise_id", "order"),
+    )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    exercise_id = Column(Integer, nullable=False)
-    input_data = Column(Text, nullable=False)
-    expected_output = Column(Text, nullable=False)
-    is_hidden = Column(Boolean, nullable=False, default='FALSE')
-    weight = Column(Numeric, nullable=False, default='1.00')
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
+# ==================== ExerciseSubmission Model ====================
 
 class ExerciseSubmission(Base):
-    """
-    Student attempts at exercises with auto-grading results.
-    """
-    __tablename__ = 'exercisesubmission'
+    """Student submission for an exercise."""
+    
+    __tablename__ = "exercise_submissions"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    exercise_id: Mapped[str] = mapped_column(String(36), ForeignKey("exercises.id"), nullable=False, index=True)
+    
+    # Submission data
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Results
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    tests_passed: Mapped[int] = mapped_column(Integer, default=0)
+    tests_total: Mapped[int] = mapped_column(Integer, default=0)
+    execution_time_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    
+    # Feedback
+    feedback: Mapped[Optional[str]] = mapped_column(Text)
+    test_results: Mapped[Optional[dict]] = mapped_column(JSON)  # Detailed test results
+    
+    # Timestamps
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="submissions")
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="submissions")
+    
+    __table_args__ = (
+        Index("ix_submissions_user_exercise", "user_id", "exercise_id"),
+        Index("ix_submissions_submitted_at", "submitted_at"),
+    )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
-    user_id = Column(Integer, nullable=False)
-    exercise_id = Column(Integer, nullable=False)
-    code = Column(Text, nullable=False)
-    execution_result = Column(String(255), nullable=False)
-    test_results = Column(String(255), nullable=False)
-    passed_count = Column(Integer, nullable=False, default='0')
-    total_count = Column(Integer, nullable=False)
-    score = Column(Numeric, nullable=False, default='0.00')
-    code_quality_rating = Column(Numeric)
-    status = Column(Enum('PENDING', " 'PASSED", " 'FAILED", " 'ERROR", name='PENDING_enum'), nullable=False, default="'pending'")
-    submitted_at = Column(DateTime, nullable=False, server_default=func.now())
+
+# ==================== Progress Model ====================
+
+class Progress(Base):
+    """Student progress for a topic."""
+    
+    __tablename__ = "progress"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id"), nullable=False, index=True)
+    
+    # Mastery calculation components (weighted average)
+    # 40% exercise + 30% quiz + 20% quality + 10% consistency
+    exercise_score: Mapped[float] = mapped_column(Float, default=0.0)  # 40%
+    quiz_score: Mapped[float] = mapped_column(Float, default=0.0)      # 30%
+    quality_score: Mapped[float] = mapped_column(Float, default=0.0)   # 20%
+    consistency_score: Mapped[float] = mapped_column(Float, default=0.0)  # 10%
+    
+    # Calculated mastery
+    mastery_score: Mapped[float] = mapped_column(Float, default=0.0)
+    mastery_level: Mapped[str] = mapped_column(String(20), default="beginner")
+    
+    # Completion tracking
+    exercises_completed: Mapped[int] = mapped_column(Integer, default=0)
+    exercises_total: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Timestamps
+    last_activity: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="progress")
+    topic: Mapped["Topic"] = relationship("Topic", back_populates="progress")
+    
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic_id", name="uq_progress_user_topic"),
+        Index("ix_progress_mastery", "mastery_score"),
+    )
+    
+    def calculate_mastery(self) -> float:
+        """Calculate weighted mastery score."""
+        self.mastery_score = (
+            self.exercise_score * 0.4 +
+            self.quiz_score * 0.3 +
+            self.quality_score * 0.2 +
+            self.consistency_score * 0.1
+        )
+        
+        # Update mastery level
+        if self.mastery_score <= 40:
+            self.mastery_level = "beginner"
+        elif self.mastery_score <= 70:
+            self.mastery_level = "learning"
+        elif self.mastery_score <= 90:
+            self.mastery_level = "proficient"
+        else:
+            self.mastery_level = "mastered"
+        
+        return self.mastery_score
 
 
-class Quiz(Base):
-    """
-    Multiple-choice assessments per topic.
-    """
-    __tablename__ = 'quiz'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    topic_id = Column(Integer, nullable=False)
-    question = Column(Text, nullable=False)
-    options = Column(String(255), nullable=False)
-    correct_answer = Column(String(1), nullable=False)
-    explanation = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-
-
-class QuizAttempt(Base):
-    """
-    Student quiz attempts with scores.
-    """
-    __tablename__ = 'quizattempt'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, nullable=False)
-    topic_id = Column(Integer, nullable=False)
-    answers = Column(String(255), nullable=False)
-    correct_count = Column(Integer, nullable=False, default='0')
-    total_count = Column(Integer, nullable=False)
-    score = Column(Numeric, nullable=False, default='0.00')
-    completed_at = Column(DateTime, nullable=False, server_default=func.now())
-
+# ==================== StruggleAlert Model ====================
 
 class StruggleAlert(Base):
-    """
-    Detect and alert teachers when students are struggling.
-    """
-    __tablename__ = 'strugglealert'
+    """Alert when a student is struggling."""
+    
+    __tablename__ = "struggle_alerts"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Alert details
+    trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Types: repeated_error, stuck_too_long, low_quiz_score, explicit_statement, failed_executions
+    
+    topic: Mapped[Optional[str]] = mapped_column(String(100))
+    exercise_id: Mapped[Optional[str]] = mapped_column(String(36))
+    
+    # Context
+    details: Mapped[Optional[dict]] = mapped_column(JSON)
+    severity: Mapped[int] = mapped_column(Integer, default=3)  # 1-5
+    
+    # Resolution
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(36))  # Teacher user_id
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="struggle_alerts")
+    
+    __table_args__ = (
+        Index("ix_struggle_alerts_unresolved", "user_id", "resolved"),
+        Index("ix_struggle_alerts_created", "created_at"),
+    )
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    uuid = Column(UUID, nullable=False, unique=True, server_default=text('gen_random_uuid()'))
-    user_id = Column(Integer, nullable=False)
-    topic_id = Column(Integer)
-    trigger_type = Column(Enum('SAME_ERROR_3X', " 'STUCK_10MIN", " 'QUIZ_FAIL", " 'EXPLICIT_HELP", " 'FAILED_EXECUTIONS_5X", name='SAME_ERROR_3X_enum'), nullable=False)
-    trigger_data = Column(String(255), nullable=False)
-    severity = Column(Enum('LOW', " 'MEDIUM", " 'HIGH", name='LOW_enum'), nullable=False, default="'medium'")
-    resolved = Column(Boolean, nullable=False, default='FALSE')
-    resolved_by = Column(Integer)
-    resolved_at = Column(DateTime)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+# ==================== ChatSession Model ====================
+
+class ChatSession(Base):
+    """Chat session with AI tutor."""
+    
+    __tablename__ = "chat_sessions"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Session metadata
+    title: Mapped[Optional[str]] = mapped_column(String(200))
+    topic: Mapped[Optional[str]] = mapped_column(String(100))
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="chat_sessions")
+    messages: Mapped[list["ChatMessage"]] = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_chat_sessions_updated", "updated_at"),
+    )
 
 
+# ==================== ChatMessage Model ====================
+
+class ChatMessage(Base):
+    """Individual chat message."""
+    
+    __tablename__ = "chat_messages"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    
+    # Message content
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # user, assistant, system
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Agent info (for assistant messages)
+    agent_type: Mapped[Optional[str]] = mapped_column(String(50))
+    
+    # Metadata
+    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="messages")
+    
+    __table_args__ = (
+        Index("ix_chat_messages_session_created", "session_id", "created_at"),
+    )
+
+
+# ==================== Achievement Model ====================
+
+class Achievement(Base):
+    """Achievement/badge definition."""
+    
+    __tablename__ = "achievements"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    
+    # Achievement info
+    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    icon: Mapped[str] = mapped_column(String(10), default="🏆")  # Emoji
+    
+    # Requirements
+    category: Mapped[str] = mapped_column(String(50), default="general")
+    xp_reward: Mapped[int] = mapped_column(Integer, default=50)
+    criteria: Mapped[Optional[dict]] = mapped_column(JSON)  # Criteria for earning
+    
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user_achievements: Mapped[list["UserAchievement"]] = relationship("UserAchievement", back_populates="achievement", cascade="all, delete-orphan")
+
+
+# ==================== UserAchievement Model ====================
+
+class UserAchievement(Base):
+    """User's earned achievement."""
+    
+    __tablename__ = "user_achievements"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    achievement_id: Mapped[str] = mapped_column(String(36), ForeignKey("achievements.id"), nullable=False, index=True)
+    
+    # Timestamps
+    earned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="achievements")
+    achievement: Mapped["Achievement"] = relationship("Achievement", back_populates="user_achievements")
+    
+    __table_args__ = (
+        UniqueConstraint("user_id", "achievement_id", name="uq_user_achievement"),
+    )

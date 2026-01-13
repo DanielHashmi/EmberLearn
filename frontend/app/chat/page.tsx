@@ -1,38 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Bot, User, Sparkles, Code, Bug, BarChart } from "lucide-react";
+import { Send, Bot, User, Sparkles, Code, Bug, BarChart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { chatApi } from "@/src_lib/api";
+import { withAuth } from "@/src_lib/auth-context";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
-export default function ChatPage() {
+function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: "👋 Hi! I'm your Python tutor. Ask me anything about Python programming!",
+      content: "👋 Hi! I'm your Python tutor. Ask me anything about Python programming - concepts, debugging, exercises, or code review!",
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
 
     const userMessage: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
     setInput("");
     setLoading(true);
 
     try {
-      const { chatApi } = await import("@/lib/api");
-      const data = await chatApi.chat(input);
-
+      const data = await chatApi.chat(currentInput);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.response },
@@ -43,7 +53,7 @@ export default function ChatPage() {
         ...prev,
         {
           role: "assistant",
-          content: `❌ Error: ${errorMessage}. Make sure the backend server is running on port 8000.`,
+          content: `❌ Connection error: ${errorMessage}\n\nMake sure the backend is running on http://localhost:8000`,
         },
       ]);
     } finally {
@@ -58,112 +68,125 @@ export default function ChatPage() {
     }
   };
 
+  const handleQuickAction = (text: string) => {
+    setInput(text);
+  };
+
   return (
-    <div className="flex flex-col h-screen overflow-hidden pt-20">
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth">
-        <AnimatePresence>
-          {messages.map((message, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-2xl flex gap-4 ${
-                  message.role === "user" ? "flex-row-reverse" : "flex-row"
-                }`}
+    <div className="flex flex-col h-screen pt-24 pb-4">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8">
+        <div className="max-w-3xl mx-auto space-y-4 py-4">
+          <AnimatePresence mode="popLayout">
+            {messages.map((message, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-lg ${
-                    message.role === "user"
-                      ? "bg-primary text-white"
-                      : "bg-purple-600 text-white"
+                  className={`flex gap-3 max-w-[85%] ${
+                    message.role === "user" ? "flex-row-reverse" : "flex-row"
                   }`}
                 >
-                  {message.role === "user" ? <User size={20} /> : <Bot size={20} />}
-                </div>
-
-                <Card
-                  variant={message.role === "user" ? "default" : "glass"}
-                  className={`p-4 rounded-2xl shadow-md ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground border-primary/20 rounded-tr-none"
-                      : "rounded-tl-none border-glass-border/30 bg-glass/60 backdrop-blur-xl"
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {message.content}
+                  <div
+                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-accent/20 text-accent"
+                    }`}
+                  >
+                    {message.role === "user" ? <User size={18} /> : <Bot size={18} />}
                   </div>
-                </Card>
+
+                  <div
+                    className={`px-4 py-3 rounded-2xl ${
+                      message.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-tr-sm"
+                        : "bg-card border border-border rounded-tl-sm"
+                    }`}
+                  >
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {loading && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex justify-start"
+            >
+              <div className="flex gap-3">
+                <div className="w-9 h-9 rounded-full bg-accent/20 flex items-center justify-center">
+                  <Bot size={18} className="text-accent" />
+                </div>
+                <div className="bg-card border border-border px-4 py-3 rounded-2xl rounded-tl-sm">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span className="text-sm">Thinking...</span>
+                  </div>
+                </div>
               </div>
             </motion.div>
-          ))}
-        </AnimatePresence>
-
-        {loading && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex justify-start"
-          >
-            <div className="bg-glass/40 backdrop-blur-md p-4 rounded-2xl rounded-tl-none border border-glass-border/20 shadow-sm ml-14">
-              <div className="flex space-x-2">
-                <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-                <div className="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
-              </div>
-            </div>
-          </motion.div>
-        )}
+          )}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input Area */}
-      <div className="p-4 md:p-6 bg-glass/20 backdrop-blur-lg border-t border-glass-border/20">
-        <div className="max-w-4xl mx-auto space-y-4">
-
+      <div className="px-4 md:px-8 pt-4 border-t border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto space-y-3">
           {/* Quick Actions */}
           <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             <QuickAction
-              icon={<Sparkles size={16} />}
+              icon={<Sparkles size={14} />}
               label="Explain loops"
-              onClick={() => setInput("How do for loops work?")}
+              onClick={() => handleQuickAction("Explain how for loops work in Python")}
             />
             <QuickAction
-              icon={<Code size={16} />}
-              label="Practice exercise"
-              onClick={() => setInput("Give me a coding exercise")}
+              icon={<Code size={14} />}
+              label="Give me an exercise"
+              onClick={() => handleQuickAction("Give me a coding exercise to practice")}
             />
             <QuickAction
-              icon={<Bug size={16} />}
-              label="Debug help"
-              onClick={() => setInput("Debug my code")}
+              icon={<Bug size={14} />}
+              label="Help debug"
+              onClick={() => handleQuickAction("Help me debug my code")}
             />
             <QuickAction
-              icon={<BarChart size={16} />}
-              label="My progress"
-              onClick={() => setInput("Show my progress")}
+              icon={<BarChart size={14} />}
+              label="Check progress"
+              onClick={() => handleQuickAction("Show my learning progress")}
             />
           </div>
 
-          <div className="flex gap-3 relative">
+          {/* Input */}
+          <div className="flex gap-3">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask about Python... (Shift+Enter for new line)"
-              className="flex-1 p-4 pr-16 bg-white/50 dark:bg-black/50 backdrop-blur-md border border-glass-border/30 rounded-2xl focus:ring-2 focus:ring-primary/50 focus:border-transparent resize-none shadow-inner placeholder:text-muted-foreground transition-all h-16 max-h-32"
+              onKeyDown={handleKeyPress}
+              placeholder="Ask about Python... (Enter to send)"
+              disabled={loading}
+              className="flex-1 px-4 py-3 bg-card border border-border rounded-xl focus:ring-2 focus:ring-primary/50 focus:border-primary resize-none text-sm placeholder:text-muted-foreground disabled:opacity-50"
               rows={1}
+              style={{ minHeight: '48px', maxHeight: '120px' }}
             />
             <Button
               onClick={sendMessage}
               disabled={loading || !input.trim()}
-              className="absolute right-2 top-2 h-12 w-12 rounded-xl bg-primary hover:bg-primary/90 shadow-lg hover:shadow-primary/25 hover:scale-105 transition-all"
               size="icon"
+              className="h-12 w-12 rounded-xl shrink-0"
             >
-              <Send size={20} />
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </Button>
           </div>
         </div>
@@ -172,14 +195,24 @@ export default function ChatPage() {
   );
 }
 
-function QuickAction({ icon, label, onClick }: { icon: React.ReactNode, label: string, onClick: () => void }) {
+function QuickAction({ 
+  icon, 
+  label, 
+  onClick 
+}: { 
+  icon: React.ReactNode
+  label: string
+  onClick: () => void 
+}) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-glass/30 hover:bg-glass/50 border border-glass-border/20 rounded-full transition-all whitespace-nowrap backdrop-blur-sm text-foreground hover:scale-105 active:scale-95"
+      className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium bg-card hover:bg-accent/10 border border-border rounded-full transition-colors whitespace-nowrap"
     >
       {icon}
       <span>{label}</span>
     </button>
-  )
+  );
 }
+
+export default withAuth(ChatPage);

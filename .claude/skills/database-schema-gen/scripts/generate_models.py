@@ -1,220 +1,453 @@
 #!/usr/bin/env python3
-"""Generate SQLAlchemy models from data-model.md specification."""
+"""
+Generate the exact SQLAlchemy models for EmberLearn.
+This script produces the production-grade models used in the working project.
+"""
 
 import os
-import re
-import sys
 from pathlib import Path
 
+MODELS_CONTENT = '''"""
+SQLAlchemy ORM Models
 
-def parse_data_model(data_model_path: str) -> list[dict]:
-    """Parse data-model.md and extract entity definitions."""
-    with open(data_model_path, 'r') as f:
-        content = f.read()
-
-    entities = []
-
-    # Find all entity sections (## 1. EntityName format)
-    entity_pattern = r'## \d+\.\s+(\w+)\n\n\*\*Purpose\*\*:\s*(.+?)\n\n.*?\n\n\| Field \| Type \| Constraints \| Description \|\n\|.*?\n((?:\|.+?\n)+)'
-
-    for match in re.finditer(entity_pattern, content, re.DOTALL):
-        entity_name = match.group(1)
-        purpose = match.group(2).strip()
-        fields_table = match.group(3)
-
-        fields = []
-        for field_row in fields_table.strip().split('\n'):
-            if field_row.startswith('|'):
-                parts = [p.strip() for p in field_row.split('|')[1:-1]]
-                if len(parts) >= 4 and parts[0] != '------':
-                    field_name = parts[0].strip('`')
-                    field_type = parts[1]
-                    constraints = parts[2]
-                    description = parts[3]
-                    fields.append({
-                        'name': field_name,
-                        'type': field_type,
-                        'constraints': constraints,
-                        'description': description
-                    })
-
-        entities.append({
-            'name': entity_name,
-            'purpose': purpose,
-            'fields': fields
-        })
-
-    return entities
-
-
-def map_sql_type_to_sqlalchemy(sql_type: str) -> str:
-    """Map SQL type to SQLAlchemy column type."""
-    sql_type = sql_type.upper()
-
-    if 'INTEGER' in sql_type or 'INT' in sql_type:
-        return 'Integer'
-    elif 'VARCHAR' in sql_type:
-        match = re.search(r'\((\d+)\)', sql_type)
-        if match:
-            return f'String({match.group(1)})'
-        return 'String(255)'
-    elif 'TEXT' in sql_type:
-        return 'Text'
-    elif 'TIMESTAMP' in sql_type or 'DATETIME' in sql_type:
-        return 'DateTime'
-    elif 'UUID' in sql_type:
-        return 'UUID'
-    elif 'BOOLEAN' in sql_type or 'BOOL' in sql_type:
-        return 'Boolean'
-    elif 'DECIMAL' in sql_type or 'NUMERIC' in sql_type:
-        return 'Numeric'
-    elif 'FLOAT' in sql_type:
-        return 'Float'
-    elif 'ENUM' in sql_type:
-        # Extract enum values
-        match = re.search(r"ENUM\((.*?)\)", sql_type)
-        if match:
-            values = [v.strip("'\"") for v in match.group(1).split(',')]
-            return f"Enum({', '.join(repr(v) for v in values)}, name='{values[0]}_enum')"
-        return 'String(50)'
-    else:
-        return 'String(255)'
-
-
-def parse_constraints(constraints: str) -> dict:
-    """Parse constraints column into Python dict."""
-    result = {
-        'primary_key': 'PRIMARY KEY' in constraints.upper(),
-        'unique': 'UNIQUE' in constraints.upper(),
-        'nullable': 'NOT NULL' not in constraints.upper(),
-        'autoincrement': 'AUTO INCREMENT' in constraints.upper(),
-        'default': None,
-        'foreign_key': None
-    }
-
-    # Extract default value
-    default_match = re.search(r'DEFAULT\s+(.+?)(?:,|$)', constraints, re.IGNORECASE)
-    if default_match:
-        result['default'] = default_match.group(1).strip()
-
-    # Extract foreign key
-    fk_match = re.search(r'FOREIGN KEY.*?REFERENCES\s+(\w+)\((\w+)\)', constraints, re.IGNORECASE)
-    if fk_match:
-        result['foreign_key'] = (fk_match.group(1), fk_match.group(2))
-
-    return result
-
-
-def generate_sqlalchemy_model(entity: dict) -> str:
-    """Generate SQLAlchemy model class code."""
-    class_name = entity['name']
-    table_name = class_name.lower()
-
-    # Start class definition
-    code = f'''class {class_name}(Base):
-    """
-    {entity['purpose']}
-    """
-    __tablename__ = '{table_name}'
-
-'''
-
-    # Generate columns
-    for field in entity['fields']:
-        field_name = field['name']
-        sql_type = field['type']
-        sa_type = map_sql_type_to_sqlalchemy(sql_type)
-        constraints = parse_constraints(field['constraints'])
-
-        # Build column definition
-        col_parts = [f"Column({sa_type}"]
-
-        if constraints['primary_key']:
-            col_parts.append("primary_key=True")
-        if not constraints['nullable']:
-            col_parts.append("nullable=False")
-        if constraints['unique']:
-            col_parts.append("unique=True")
-        if constraints['autoincrement']:
-            col_parts.append("autoincrement=True")
-        if constraints['default']:
-            default_val = constraints['default']
-            if default_val.upper() == 'NOW()':
-                col_parts.append("server_default=func.now()")
-            elif default_val.upper() == 'GEN_RANDOM_UUID()':
-                col_parts.append("server_default=text('gen_random_uuid()')")
-            else:
-                col_parts.append(f"default={repr(default_val)}")
-        if constraints['foreign_key']:
-            fk_table, fk_col = constraints['foreign_key']
-            col_parts.append(f"ForeignKey('{fk_table.lower()}.{fk_col}')")
-
-        col_def = ", ".join(col_parts) + ")"
-
-        code += f"    {field_name} = {col_def}\n"
-
-    code += "\n"
-    return code
-
-
-def generate_models_file(entities: list[dict], output_path: str):
-    """Generate complete models.py file."""
-    header = '''"""
-SQLAlchemy ORM models for EmberLearn database.
-
-Auto-generated from data-model.md specification.
+Database models for the EmberLearn platform.
+Supports PostgreSQL (Neon) with async operations.
 """
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+from uuid import uuid4
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Enum, Float, ForeignKey,
-    Integer, Numeric, String, Text, func, text
+    Boolean,
+    Column,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    JSON,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-
-Base = declarative_base()
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 
 
+class Base(DeclarativeBase):
+    """Base class for all ORM models."""
+    pass
+
+
+def generate_uuid() -> str:
+    """Generate a new UUID string."""
+    return str(uuid4())
+
+
+# ==================== User Model ====================
+
+class User(Base):
+    """User account model."""
+    
+    __tablename__ = "users"  # Use double quotes for table names
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # Profile
+    display_name: Mapped[Optional[str]] = mapped_column(String(100))
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(500))
+    role: Mapped[str] = mapped_column(String(20), default="student")  # student, teacher, admin
+    
+    # Gamification
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+    level: Mapped[int] = mapped_column(Integer, default=1)
+    streak_days: Mapped[int] = mapped_column(Integer, default=0)
+    last_activity_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    progress: Mapped[list["Progress"]] = relationship("Progress", back_populates="user", cascade="all, delete-orphan")
+    submissions: Mapped[list["ExerciseSubmission"]] = relationship("ExerciseSubmission", back_populates="user", cascade="all, delete-orphan")
+    chat_sessions: Mapped[list["ChatSession"]] = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    achievements: Mapped[list["UserAchievement"]] = relationship("UserAchievement", back_populates="user", cascade="all, delete-orphan")
+    struggle_alerts: Mapped[list["StruggleAlert"]] = relationship("StruggleAlert", back_populates="user", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_users_role", "role"),
+        Index("ix_users_level", "level"),
+    )
+
+
+# ==================== Topic Model ====================
+
+class Topic(Base):
+    """Python curriculum topic."""
+    
+    __tablename__ = "topics"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    icon: Mapped[Optional[str]] = mapped_column(String(10))  # Emoji
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Content
+    concepts: Mapped[Optional[dict]] = mapped_column(JSON)  # List of concepts covered
+    prerequisites: Mapped[Optional[list]] = mapped_column(JSON)  # List of prerequisite topic slugs
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    exercises: Mapped[list["Exercise"]] = relationship("Exercise", back_populates="topic", cascade="all, delete-orphan")
+    progress: Mapped[list["Progress"]] = relationship("Progress", back_populates="topic", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_topics_order", "order"),
+    )
+
+
+# ==================== Exercise Model ====================
+
+class Exercise(Base):
+    """Coding exercise/challenge."""
+    
+    __tablename__ = "exercises"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id"), nullable=False, index=True)
+    
+    # Content
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    starter_code: Mapped[str] = mapped_column(Text, default="# Write your code here\n")
+    solution_code: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # Metadata
+    difficulty: Mapped[str] = mapped_column(String(20), default="medium")  # easy, medium, hard
+    estimated_time_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    xp_reward: Mapped[int] = mapped_column(Integer, default=100)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Hints (JSON array)
+    hints: Mapped[Optional[list]] = mapped_column(JSON)
+    
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    topic: Mapped["Topic"] = relationship("Topic", back_populates="exercises")
+    test_cases: Mapped[list["TestCase"]] = relationship("TestCase", back_populates="exercise", cascade="all, delete-orphan")
+    submissions: Mapped[list["ExerciseSubmission"]] = relationship("ExerciseSubmission", back_populates="exercise", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_exercises_difficulty", "difficulty"),
+        Index("ix_exercises_topic_order", "topic_id", "order"),
+    )
+
+
+# ==================== TestCase Model ====================
+
+class TestCase(Base):
+    """Test case for an exercise."""
+    
+    __tablename__ = "test_cases"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    exercise_id: Mapped[str] = mapped_column(String(36), ForeignKey("exercises.id"), nullable=False, index=True)
+    
+    # Test data
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_data: Mapped[str] = mapped_column(Text, default="")
+    expected_output: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Metadata
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Relationships
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="test_cases")
+    
+    __table_args__ = (
+        Index("ix_test_cases_exercise_order", "exercise_id", "order"),
+    )
+
+
+# ==================== ExerciseSubmission Model ====================
+
+class ExerciseSubmission(Base):
+    """Student submission for an exercise."""
+    
+    __tablename__ = "exercise_submissions"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    exercise_id: Mapped[str] = mapped_column(String(36), ForeignKey("exercises.id"), nullable=False, index=True)
+    
+    # Submission data
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Results
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    passed: Mapped[bool] = mapped_column(Boolean, default=False)
+    tests_passed: Mapped[int] = mapped_column(Integer, default=0)
+    tests_total: Mapped[int] = mapped_column(Integer, default=0)
+    execution_time_ms: Mapped[Optional[int]] = mapped_column(Integer)
+    
+    # Feedback
+    feedback: Mapped[Optional[str]] = mapped_column(Text)
+    test_results: Mapped[Optional[dict]] = mapped_column(JSON)  # Detailed test results
+    
+    # Timestamps
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="submissions")
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="submissions")
+    
+    __table_args__ = (
+        Index("ix_submissions_user_exercise", "user_id", "exercise_id"),
+        Index("ix_submissions_submitted_at", "submitted_at"),
+    )
+
+
+# ==================== Progress Model ====================
+
+class Progress(Base):
+    """Student progress for a topic."""
+    
+    __tablename__ = "progress"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    topic_id: Mapped[str] = mapped_column(String(36), ForeignKey("topics.id"), nullable=False, index=True)
+    
+    # Mastery calculation components (weighted average)
+    # 40% exercise + 30% quiz + 20% quality + 10% consistency
+    exercise_score: Mapped[float] = mapped_column(Float, default=0.0)  # 40%
+    quiz_score: Mapped[float] = mapped_column(Float, default=0.0)      # 30%
+    quality_score: Mapped[float] = mapped_column(Float, default=0.0)   # 20%
+    consistency_score: Mapped[float] = mapped_column(Float, default=0.0)  # 10%
+    
+    # Calculated mastery
+    mastery_score: Mapped[float] = mapped_column(Float, default=0.0)
+    mastery_level: Mapped[str] = mapped_column(String(20), default="beginner")
+    
+    # Completion tracking
+    exercises_completed: Mapped[int] = mapped_column(Integer, default=0)
+    exercises_total: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Timestamps
+    last_activity: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="progress")
+    topic: Mapped["Topic"] = relationship("Topic", back_populates="progress")
+    
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic_id", name="uq_progress_user_topic"),
+        Index("ix_progress_mastery", "mastery_score"),
+    )
+    
+    def calculate_mastery(self) -> float:
+        """Calculate weighted mastery score."""
+        self.mastery_score = (
+            self.exercise_score * 0.4 +
+            self.quiz_score * 0.3 +
+            self.quality_score * 0.2 +
+            self.consistency_score * 0.1
+        )
+        
+        # Update mastery level
+        if self.mastery_score <= 40:
+            self.mastery_level = "beginner"
+        elif self.mastery_score <= 70:
+            self.mastery_level = "learning"
+        elif self.mastery_score <= 90:
+            self.mastery_level = "proficient"
+        else:
+            self.mastery_level = "mastered"
+        
+        return self.mastery_score
+
+
+# ==================== StruggleAlert Model ====================
+
+class StruggleAlert(Base):
+    """Alert when a student is struggling."""
+    
+    __tablename__ = "struggle_alerts"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Alert details
+    trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Types: repeated_error, stuck_too_long, low_quiz_score, explicit_statement, failed_executions
+    
+    topic: Mapped[Optional[str]] = mapped_column(String(100))
+    exercise_id: Mapped[Optional[str]] = mapped_column(String(36))
+    
+    # Context
+    details: Mapped[Optional[dict]] = mapped_column(JSON)
+    severity: Mapped[int] = mapped_column(Integer, default=3)  # 1-5
+    
+    # Resolution
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(36))  # Teacher user_id
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="struggle_alerts")
+    
+    __table_args__ = (
+        Index("ix_struggle_alerts_unresolved", "user_id", "resolved"),
+        Index("ix_struggle_alerts_created", "created_at"),
+    )
+
+
+# ==================== ChatSession Model ====================
+
+class ChatSession(Base):
+    """Chat session with AI tutor."""
+    
+    __tablename__ = "chat_sessions"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    
+    # Session metadata
+    title: Mapped[Optional[str]] = mapped_column(String(200))
+    topic: Mapped[Optional[str]] = mapped_column(String(100))
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="chat_sessions")
+    messages: Mapped[list["ChatMessage"]] = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        Index("ix_chat_sessions_updated", "updated_at"),
+    )
+
+
+# ==================== ChatMessage Model ====================
+
+class ChatMessage(Base):
+    """Individual chat message."""
+    
+    __tablename__ = "chat_messages"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    session_id: Mapped[str] = mapped_column(String(36), ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    
+    # Message content
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # user, assistant, system
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Agent info (for assistant messages)
+    agent_type: Mapped[Optional[str]] = mapped_column(String(50))
+    
+    # Metadata
+    metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    session: Mapped["ChatSession"] = relationship("ChatSession", back_populates="messages")
+    
+    __table_args__ = (
+        Index("ix_chat_messages_session_created", "session_id", "created_at"),
+    )
+
+
+# ==================== Achievement Model ====================
+
+class Achievement(Base):
+    """Achievement/badge definition."""
+    
+    __tablename__ = "achievements"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    
+    # Achievement info
+    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    icon: Mapped[str] = mapped_column(String(10), default="🏆")  # Emoji
+    
+    # Requirements
+    category: Mapped[str] = mapped_column(String(50), default="general")
+    xp_reward: Mapped[int] = mapped_column(Integer, default=50)
+    criteria: Mapped[Optional[dict]] = mapped_column(JSON)  # Criteria for earning
+    
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user_achievements: Mapped[list["UserAchievement"]] = relationship("UserAchievement", back_populates="achievement", cascade="all, delete-orphan")
+
+
+# ==================== UserAchievement Model ====================
+
+class UserAchievement(Base):
+    """User's earned achievement."""
+    
+    __tablename__ = "user_achievements"
+    
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    achievement_id: Mapped[str] = mapped_column(String(36), ForeignKey("achievements.id"), nullable=False, index=True)
+    
+    # Timestamps
+    earned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="achievements")
+    achievement: Mapped["Achievement"] = relationship("Achievement", back_populates="user_achievements")
+    
+    __table_args__ = (
+        UniqueConstraint("user_id", "achievement_id", name="uq_user_achievement"),
+    )
 '''
 
-    # Generate all model classes
-    models_code = header
-    for entity in entities:
-        models_code += generate_sqlalchemy_model(entity) + "\n"
-
-    # Write to file
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'w') as f:
-        f.write(models_code)
-
-    return len(entities)
-
-
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python generate_models.py <data-model.md path>")
-        sys.exit(1)
-
-    data_model_path = sys.argv[1]
-
-    if not os.path.exists(data_model_path):
-        print(f"Error: {data_model_path} not found")
-        sys.exit(1)
-
-    # Parse data model
-    entities = parse_data_model(data_model_path)
-
-    # Generate models.py
-    output_path = "backend/database/models.py"
-    num_models = generate_models_file(entities, output_path)
-
-    print(f"✓ Generated {num_models} models in {output_path}")
-
+    print("Generating EmberLearn database models...")
+    
+    output_path = Path("backend/database/models.py")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(MODELS_CONTENT)
+    
+    print(f"✓ Generated {output_path}")
 
 if __name__ == "__main__":
     main()

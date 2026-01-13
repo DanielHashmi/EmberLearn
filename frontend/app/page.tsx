@@ -4,151 +4,413 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { 
+  Flame, 
+  Code, 
+  Brain, 
+  Zap, 
+  Target, 
+  Trophy,
+  ArrowRight,
+  Sparkles,
+  BookOpen,
+  MessageSquare,
+  BarChart3
+} from 'lucide-react'
+import { 
+  staggerContainer, 
+  staggerItem, 
+  scaleIn
+} from '@/src_lib/animation-presets'
+import { pythonTopics } from '@/src_lib/design-tokens'
+import { useAuth } from '@/src_lib/auth-context'
 
 export default function LandingPage() {
+  const { user } = useAuth()
+
   return (
-    <div className="min-h-screen relative overflow-hidden font-sans">
-
-      {/* Main Content Area */}
-      <motion.main
-        className="pt-32 pb-20 px-4 md:px-8 max-w-7xl mx-auto"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <div className="flex flex-col md:flex-row items-center gap-12">
-
-          {/* Left Column: Text */}
-          <div className="flex-1 text-center md:text-left z-10">
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-4 md:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+            {/* Left Column: Text */}
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, type: "spring" }}
+              className="flex-1 text-center lg:text-left z-10"
+              initial="initial"
+              animate="animate"
+              variants={staggerContainer}
             >
-              <h1 className="text-5xl md:text-8xl font-black mb-6 tracking-tight leading-tight">
-                Master <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 animate-gradient-x">
-                  Python AI
-                </span>
-              </h1>
+              <motion.div variants={staggerItem}>
+                <Badge variant="glass" className="mb-6 px-4 py-2">
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  AI-Powered Learning Platform
+                </Badge>
+              </motion.div>
 
-              <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-2xl leading-relaxed">
-                The first intelligent tutoring platform that adapts to your unique learning style.
-                Built with <span className="font-semibold text-foreground">Glassmorphism</span> technology.
-              </p>
+              <motion.h1
+                variants={staggerItem}
+                className="text-5xl md:text-7xl lg:text-8xl font-black mb-6 tracking-tight leading-[1.1]"
+              >
+                Master{' '}
+                <span className="gradient-text-animated">Python</span>
+                <br />
+                with AI
+              </motion.h1>
 
-              <div className="flex flex-wrap gap-4 justify-center md:justify-start">
-                <Link href="/register">
-                  <Button size="lg" className="h-14 px-8 rounded-2xl text-lg bg-primary hover:bg-primary/90 shadow-xl shadow-primary/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300">
-                    Start Learning
-                  </Button>
-                </Link>
-                <Link href="/chat">
-                  <Button variant="glass" size="lg" className="h-14 px-8 rounded-2xl text-lg backdrop-blur-xl border-white/20 hover:bg-white/10 hover:border-white/40 transition-all duration-300">
-                    Live Demo
-                  </Button>
-                </Link>
-              </div>
-            </motion.div>
-          </div>
+              <motion.p
+                variants={staggerItem}
+                className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-2xl leading-relaxed"
+              >
+                The intelligent tutoring platform that adapts to your unique
+                learning style. Get personalized explanations, instant code
+                reviews, and adaptive exercises.
+              </motion.p>
 
-          {/* Right Column: Glass Card Stack */}
-          <div className="flex-1 w-full max-w-md md:max-w-xl relative h-[600px] hidden md:block">
-            <motion.div
-              className="absolute inset-0"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 1, delay: 0.2 }}
-            >
-              {/* Floating Cards */}
-              <GlassCard
-                title="AI Tutor"
-                icon="🤖"
-                className="absolute top-10 left-10 z-30 w-64 rotate-[-6deg]"
-                delay={0.4}
-              />
-              <GlassCard
-                title="Code Editor"
-                icon="💻"
-                className="absolute top-40 right-0 z-20 w-72 rotate-[3deg]"
-                delay={0.6}
-              />
-              <GlassCard
-                title="Analytics"
-                icon="📊"
-                className="absolute bottom-20 left-20 z-10 w-64 rotate-[-3deg]"
-                delay={0.8}
-              />
-            </motion.div>
-          </div>
-        </div>
-      </motion.main>
+              <motion.div
+                variants={staggerItem}
+                className="flex flex-wrap gap-4 justify-center lg:justify-start"
+              >
+                {user ? (
+                  <Link href="/dashboard">
+                    <Button size="xl" variant="gradient">
+                      Go to Dashboard
+                      <ArrowRight className="w-5 h-5 ml-2" />
+                    </Button>
+                  </Link>
+                ) : (
+                  <>
+                    <Link href="/register">
+                      <Button size="xl" variant="gradient">
+                        Start Learning Free
+                        <ArrowRight className="w-5 h-5 ml-2" />
+                      </Button>
+                    </Link>
+                    <Link href="/login">
+                      <Button size="xl" variant="glass">
+                        Sign In
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </motion.div>
 
-      {/* Grid of Features */}
-      <section className="py-20 px-4">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
-          {features.map((feature, i) => (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <Card variant="glass" className="h-full p-8 hover:bg-glass/20 transition-colors border-white/10">
-                <div className="text-5xl mb-6 bg-glass/30 w-16 h-16 flex items-center justify-center rounded-2xl">
-                  {feature.icon}
+              <motion.div
+                variants={staggerItem}
+                className="flex items-center gap-8 mt-10 justify-center lg:justify-start"
+              >
+                <div className="text-center">
+                  <div className="text-3xl font-bold gradient-text">10K+</div>
+                  <div className="text-sm text-muted-foreground">Students</div>
                 </div>
-                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">{feature.description}</p>
-              </Card>
+                <div className="w-px h-10 bg-border" />
+                <div className="text-center">
+                  <div className="text-3xl font-bold gradient-text">500+</div>
+                  <div className="text-sm text-muted-foreground">Exercises</div>
+                </div>
+                <div className="w-px h-10 bg-border" />
+                <div className="text-center">
+                  <div className="text-3xl font-bold gradient-text">6</div>
+                  <div className="text-sm text-muted-foreground">AI Agents</div>
+                </div>
+              </motion.div>
             </motion.div>
-          ))}
+
+            {/* Right Column: Floating Cards */}
+            <div className="flex-1 w-full max-w-lg relative h-[500px] hidden lg:block">
+              <FloatingCard
+                title="AI Tutor"
+                description="Get instant explanations"
+                icon={<Brain className="w-6 h-6" />}
+                className="absolute top-0 left-0 w-64"
+                delay={0.2}
+                rotation={-6}
+              />
+              <FloatingCard
+                title="Code Editor"
+                description="Write and run Python"
+                icon={<Code className="w-6 h-6" />}
+                className="absolute top-32 right-0 w-72"
+                delay={0.4}
+                rotation={3}
+              />
+              <FloatingCard
+                title="Progress Tracking"
+                description="See your improvement"
+                icon={<BarChart3 className="w-6 h-6" />}
+                className="absolute bottom-10 left-10 w-64"
+                delay={0.6}
+                rotation={-3}
+              />
+            </div>
+          </div>
         </div>
       </section>
+
+      {/* Features Section */}
+      <section className="py-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true, margin: '-100px' }}
+            variants={staggerContainer}
+            className="text-center mb-16"
+          >
+            <motion.h2
+              variants={staggerItem}
+              className="text-4xl md:text-5xl font-bold mb-4"
+            >
+              Learn Smarter, Not Harder
+            </motion.h2>
+            <motion.p
+              variants={staggerItem}
+              className="text-xl text-muted-foreground max-w-2xl mx-auto"
+            >
+              Our AI-powered platform provides personalized learning experiences
+              that adapt to your pace and style.
+            </motion.p>
+          </motion.div>
+
+          <motion.div
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true, margin: '-100px' }}
+            variants={staggerContainer}
+            className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            {features.map((feature) => (
+              <motion.div key={feature.title} variants={staggerItem}>
+                <Card
+                  variant="glass"
+                  interactive
+                  className="h-full hover:glow-accent transition-all duration-500"
+                >
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center text-accent">
+                      {feature.icon}
+                    </div>
+                    <h3 className="text-xl font-bold">{feature.title}</h3>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {feature.description}
+                  </p>
+                </Card>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Topics Section */}
+      <section className="py-20 px-4 relative">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true, margin: '-100px' }}
+            variants={staggerContainer}
+            className="text-center mb-16"
+          >
+            <motion.h2
+              variants={staggerItem}
+              className="text-4xl md:text-5xl font-bold mb-4"
+            >
+              Complete Python Curriculum
+            </motion.h2>
+            <motion.p
+              variants={staggerItem}
+              className="text-xl text-muted-foreground max-w-2xl mx-auto"
+            >
+              From basics to advanced topics, master Python step by step with
+              our structured curriculum.
+            </motion.p>
+          </motion.div>
+
+          <motion.div
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true, margin: '-100px' }}
+            variants={staggerContainer}
+            className="grid grid-cols-2 md:grid-cols-4 gap-4"
+          >
+            {pythonTopics.map((topic) => (
+              <motion.div
+                key={topic.id}
+                variants={staggerItem}
+                whileHover={{ scale: 1.05, y: -5 }}
+                className="group"
+              >
+                <Card variant="glass" className="text-center p-6 h-full">
+                  <div className="text-4xl mb-3">{topic.icon}</div>
+                  <h3 className="font-bold mb-1">{topic.name}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {topic.description}
+                  </p>
+                </Card>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 px-4">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true }}
+            variants={scaleIn}
+          >
+            <Card variant="glow" className="text-center p-12 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/10 to-secondary/10" />
+              <div className="relative z-10">
+                <motion.div
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="inline-block mb-6"
+                >
+                  <Flame className="w-16 h-16 text-primary" />
+                </motion.div>
+                <h2 className="text-4xl md:text-5xl font-bold mb-4">
+                  Ready to Start Learning?
+                </h2>
+                <p className="text-xl text-muted-foreground mb-8 max-w-xl mx-auto">
+                  Join thousands of students mastering Python with our AI-powered
+                  tutoring platform.
+                </p>
+                <div className="flex flex-wrap gap-4 justify-center">
+                  {user ? (
+                    <Link href="/dashboard">
+                      <Button size="xl" variant="gradient">
+                        Back to Dashboard
+                        <ArrowRight className="w-5 h-5 ml-2" />
+                      </Button>
+                    </Link>
+                  ) : (
+                    <>
+                      <Link href="/register">
+                        <Button size="xl" variant="gradient">
+                          Get Started Free
+                          <ArrowRight className="w-5 h-5 ml-2" />
+                        </Button>
+                      </Link>
+                      <Link href="/login">
+                        <Button size="xl" variant="outline">
+                          Sign In
+                        </Button>
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 px-4 border-t border-border/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Flame className="w-6 h-6 text-primary" />
+              <span className="font-bold">EmberLearn</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              © 2025 EmberLearn. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
 
-function GlassCard({ title, icon, className, delay }: { title: string, icon: string, className?: string, delay: number }) {
+function FloatingCard({
+  title,
+  description,
+  icon,
+  className,
+  delay,
+  rotation,
+}: {
+  title: string
+  description: string
+  icon: React.ReactNode
+  className?: string
+  delay: number
+  rotation: number
+}) {
   return (
     <motion.div
-      initial={{ y: 20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ delay, duration: 0.5 }}
+      initial={{ opacity: 0, y: 30, rotate: 0 }}
+      animate={{ opacity: 1, y: 0, rotate: rotation }}
+      transition={{ delay, duration: 0.6, type: 'spring' }}
       whileHover={{ scale: 1.05, rotate: 0, zIndex: 50 }}
-      className={`p-6 rounded-3xl bg-glass/40 backdrop-blur-xl border border-white/30 shadow-2xl shadow-purple-500/10 ${className}`}
+      className={className}
     >
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-white/40 to-white/5 flex items-center justify-center text-2xl shadow-inner">
-          {icon}
-        </div>
-        <div className="h-2 w-24 bg-white/20 rounded-full" />
-      </div>
-      <h3 className="text-xl font-bold text-foreground mb-2">{title}</h3>
-      <div className="space-y-2">
-        <div className="h-2 w-full bg-white/10 rounded-full" />
-        <div className="h-2 w-3/4 bg-white/10 rounded-full" />
-      </div>
+      <motion.div
+        animate={{ y: [0, -10, 0] }}
+        transition={{ duration: 4 + delay, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <Card variant="glass" className="p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-accent/30 to-accent/10 flex items-center justify-center text-accent">
+              {icon}
+            </div>
+            <div>
+              <h3 className="font-bold">{title}</h3>
+              <p className="text-xs text-muted-foreground">{description}</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="h-2 w-full bg-muted/20 rounded-full" />
+            <div className="h-2 w-3/4 bg-muted/20 rounded-full" />
+          </div>
+        </Card>
+      </motion.div>
     </motion.div>
   )
 }
 
 const features = [
   {
-    icon: "🚀",
-    title: "Instant Feedback",
-    description: "Real-time code analysis and suggestions help you learn faster and build better habits."
+    icon: <Brain className="w-6 h-6" />,
+    title: 'AI Explanations',
+    description:
+      'Get clear, personalized explanations of Python concepts adapted to your current understanding level.',
   },
   {
-    icon: "🧠",
-    title: "Adaptive Learning",
-    description: "The curriculum evolves with you, focusing on concepts where you need the most practice."
+    icon: <Code className="w-6 h-6" />,
+    title: 'Live Code Editor',
+    description:
+      'Write and run Python code directly in your browser with syntax highlighting and auto-completion.',
   },
   {
-    icon: "⚡",
-    title: "Interactive Shell",
-    description: "Run Python code directly in your browser with zero setup or installation required."
+    icon: <MessageSquare className="w-6 h-6" />,
+    title: 'Smart Debugging',
+    description:
+      'Our AI analyzes your errors and provides helpful hints before revealing the solution.',
+  },
+  {
+    icon: <Target className="w-6 h-6" />,
+    title: 'Adaptive Exercises',
+    description:
+      'Practice with exercises that automatically adjust to your skill level and learning pace.',
+  },
+  {
+    icon: <BarChart3 className="w-6 h-6" />,
+    title: 'Progress Tracking',
+    description:
+      'Track your mastery across all topics with detailed analytics and streak tracking.',
+  },
+  {
+    icon: <Trophy className="w-6 h-6" />,
+    title: 'Achievements',
+    description:
+      'Earn badges and achievements as you progress through the curriculum and complete challenges.',
   },
 ]
-

@@ -1,140 +1,121 @@
----
-sidebar_position: 2
----
+# System Architecture
 
-# Architecture
+EmberLearn is a cloud-native AI-powered Python tutoring platform built with microservices architecture.
 
-EmberLearn follows a cloud-native microservices architecture with event-driven communication.
-
-## System Overview
+## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Kong API Gateway                          │
-│                    (JWT Auth, Rate Limiting)                     │
-└─────────────────────────────────────────────────────────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        │                       │                       │
-        ▼                       ▼                       ▼
-┌───────────────┐     ┌───────────────┐     ┌───────────────┐
-│   Frontend    │     │  Triage Agent │     │ Sandbox       │
-│  (Next.js)    │     │  (Router)     │     │ (Executor)    │
-└───────────────┘     └───────────────┘     └───────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │           │         │         │           │
-        ▼           ▼         ▼         ▼           ▼
-┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-│Concepts │ │  Code   │ │  Debug  │ │Exercise │ │Progress │
-│ Agent   │ │ Review  │ │  Agent  │ │  Agent  │ │  Agent  │
-└─────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘
-        │           │         │         │           │
-        └───────────┴─────────┴─────────┴───────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    │                   │
-                    ▼                   ▼
-            ┌───────────────┐   ┌───────────────┐
-            │     Kafka     │   │  PostgreSQL   │
-            │   (Pub/Sub)   │   │   (State)     │
-            └───────────────┘   └───────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         KUBERNETES CLUSTER                       │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ││
+│  │  │   Next.js   │    │   FastAPI   │    │   FastAPI   │    ││
+│  │  │  Frontend   │    │  Triage Svc │    │ Concepts Svc│    ││
+│  │  │ +Monaco Ed  │    │ +Dapr+Agent │    │ +Dapr+Agent │    ││
+│  │  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    ││
+│  │         │                 │                  │             ││
+│  │         └────────────┬────┴──────────────────┘             ││
+│  │                      ▼                                      ││
+│  │  ┌─────────────────────────────────────────────────────┐   ││
+│  │  │                      KAFKA                          │   ││
+│  │  │  learning.* | code.* | exercise.* | struggle.*      │   ││
+│  │  └─────────────────────────────────────────────────────┘   ││
+│  │                      │                                      ││
+│  │         ┌────────────┴────────────┐                        ││
+│  │         ▼                         ▼                        ││
+│  │  ┌─────────────┐          ┌─────────────┐                  ││
+│  │  │ PostgreSQL  │          │   Dapr      │                  ││
+│  │  │  Neon DB    │          │  Sidecars   │                  ││
+│  │  └─────────────┘          └─────────────┘                  ││
+│  └─────────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Technology Stack
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Frontend | Next.js 15, Monaco Editor | Code editor, UI |
-| API Gateway | Kong 3.5+ | Auth, routing, rate limiting |
-| Agents | FastAPI, OpenAI Agents SDK | AI tutoring logic |
-| Service Mesh | Dapr 1.13+ | State, pub/sub, invocation |
-| Messaging | Kafka 3.6+ (Bitnami) | Event streaming |
-| Database | PostgreSQL (Neon) | Persistent storage |
-| Orchestration | Kubernetes (Minikube) | Container management |
+| Frontend | Next.js 15+ | User interface with Monaco Editor |
+| Auth | Better Auth | JWT authentication (RS256) |
+| Backend | FastAPI | AI agent microservices |
+| AI | OpenAI SDK | GPT-4o-mini for tutoring |
+| Service Mesh | Dapr 1.13+ | State, pub/sub, service invocation |
+| Messaging | Kafka 3.6+ | Event-driven communication |
+| Database | Neon PostgreSQL | User data, progress, submissions |
+| Gateway | Kong 3.5+ | API routing, JWT validation |
+| Orchestration | Kubernetes | Container orchestration |
 
 ## AI Agents
 
-Each agent is a FastAPI microservice with a Dapr sidecar:
+### Agent Architecture
 
-### Triage Agent
-- **Purpose**: Route student queries to specialist agents
-- **Model**: GPT-4o-mini (fast routing)
-- **Endpoint**: `POST /api/triage/query`
+Each agent is a FastAPI microservice with:
+- Dapr sidecar for state and pub/sub
+- OpenAI SDK for AI capabilities
+- Structured logging with correlation IDs
+- Health and readiness probes
 
-### Concepts Agent
-- **Purpose**: Explain Python concepts with adaptive examples
-- **Model**: GPT-4o (detailed explanations)
-- **Endpoint**: `POST /api/concepts/explain`
+### Agent Responsibilities
 
-### Code Review Agent
-- **Purpose**: Analyze code for correctness, style, efficiency
-- **Model**: GPT-4o
-- **Endpoint**: `POST /api/code-review/analyze`
-- **Output**: Rating (0-100), categorized issues
+| Agent | Port | Responsibility |
+|-------|------|----------------|
+| Triage | 8001 | Route queries to specialists |
+| Concepts | 8002 | Explain Python concepts |
+| Code Review | 8003 | Analyze code quality |
+| Debug | 8004 | Help fix errors |
+| Exercise | 8005 | Generate and grade exercises |
+| Progress | 8006 | Track mastery scores |
+| Sandbox | 8007 | Execute code safely |
 
-### Debug Agent
-- **Purpose**: Parse errors, identify root cause, suggest fixes
-- **Model**: GPT-4o
-- **Endpoint**: `POST /api/debug/analyze-error`
+## Event-Driven Communication
 
-### Exercise Agent
-- **Purpose**: Generate challenges, auto-grade submissions
-- **Model**: GPT-4o
-- **Endpoints**: `POST /api/exercise/generate`, `POST /api/exercise/submit`
+### Kafka Topics
 
-### Progress Agent
-- **Purpose**: Calculate mastery scores, track streaks
-- **Model**: GPT-4o-mini
-- **Endpoint**: `GET /api/progress/dashboard`
+- `learning.events` - Concept explanations, chat sessions
+- `code.events` - Code executions, reviews
+- `exercise.events` - Exercise generation, submissions
+- `struggle.alerts` - Student struggle detection
 
-## Data Flow
+### Event Flow
 
-### Query Flow
-1. Student submits question via frontend
-2. Kong validates JWT, routes to Triage Agent
-3. Triage classifies query, delegates to specialist
-4. Specialist processes with OpenAI, returns response
-5. Events published to Kafka for analytics
+1. User interacts with frontend
+2. Request goes through Kong API Gateway
+3. Triage Agent routes to specialist
+4. Specialist processes and publishes event
+5. Progress Agent updates mastery
+6. Struggle Detector monitors for issues
 
-### Exercise Flow
-1. Student requests exercise for topic
-2. Exercise Agent generates challenge via OpenAI
-3. Student submits solution
-4. Sandbox executes code (5s timeout, 50MB limit)
-5. Exercise Agent grades, invokes Code Review
-6. Progress Agent updates mastery scores
+## Security
 
-## Kafka Topics
+### Authentication
+- JWT tokens with RS256 signing
+- 24-hour token expiry
+- Refresh token rotation
 
-| Topic | Publisher | Subscriber | Purpose |
-|-------|-----------|------------|---------|
-| `learning.query` | Triage | Analytics | Track queries |
-| `learning.response` | All Agents | Analytics | Track responses |
-| `code.executed` | Sandbox | Debug, Progress | Execution events |
-| `code.reviewed` | Code Review | Progress | Review results |
-| `exercise.created` | Exercise | Progress | New exercises |
-| `exercise.completed` | Exercise | Progress | Submissions |
-| `struggle.detected` | All Agents | Progress | Struggle alerts |
-| `progress.updated` | Progress | Frontend | Mastery changes |
+### Code Sandbox
+- 5-second execution timeout
+- 50MB memory limit
+- No network access
+- No filesystem access (except temp)
+- Standard library imports only
+
+### API Security
+- Kong JWT plugin validation
+- Rate limiting per endpoint
+- CORS configuration
+- Request size limits
 
 ## Mastery Calculation
 
 ```
-Mastery Score = (Exercise × 0.4) + (Quiz × 0.3) + (CodeQuality × 0.2) + (Streak × 0.1)
+Mastery = 0.40 × Exercise Score
+        + 0.30 × Quiz Score
+        + 0.20 × Code Quality
+        + 0.10 × Consistency (Streak)
 ```
 
 ### Mastery Levels
-| Level | Score Range | Color |
-|-------|-------------|-------|
-| Beginner | 0-39% | Red |
-| Learning | 40-69% | Yellow |
-| Proficient | 70-89% | Green |
-| Mastered | 90-100% | Blue |
-
-## Security
-
-- **Authentication**: JWT tokens with RS256 signing (24h expiry)
-- **Secrets**: Kubernetes Secrets for API keys
-- **Sandbox**: Isolated code execution (no network, limited resources)
-- **PII**: Tokenized before sending to AI models
+- 0-40%: Beginner (Red)
+- 41-70%: Learning (Yellow)
+- 71-90%: Proficient (Green)
+- 91-100%: Mastered (Blue)

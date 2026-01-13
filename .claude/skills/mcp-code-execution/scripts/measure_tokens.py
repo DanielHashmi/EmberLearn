@@ -31,18 +31,21 @@ def measure_skill(skill_dir: Path) -> dict:
 
     # SKILL.md is always loaded
     if skill_md.exists():
-        result["skill_md_tokens"] = count_tokens(skill_md.read_text())
+        result["skill_md_tokens"] = count_tokens(skill_md.read_text(encoding='utf-8'))
 
     # REFERENCE.md is loaded on-demand (not counted in context)
     if reference_md.exists():
-        result["reference_md_tokens"] = count_tokens(reference_md.read_text())
+        result["reference_md_tokens"] = count_tokens(reference_md.read_text(encoding='utf-8'))
 
     # Scripts execute outside context (0 tokens)
     if scripts_dir.is_dir():
         total_script_chars = 0
         for script in scripts_dir.glob("*"):
             if script.is_file():
-                total_script_chars += len(script.read_text())
+                try:
+                    total_script_chars += len(script.read_text(encoding='utf-8'))
+                except UnicodeDecodeError:
+                    total_script_chars += len(script.read_bytes())
         result["scripts_tokens"] = count_tokens(str(total_script_chars))
         result["scripts_tokens_if_loaded"] = total_script_chars // CHARS_PER_TOKEN
 

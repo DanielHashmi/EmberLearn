@@ -1,19 +1,23 @@
-FROM python:3.11-slim
+# Concepts Agent Dockerfile
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copy requirements
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy shared utilities
 COPY ../shared /app/shared
+COPY . /app/concepts_agent
 
-# Copy agent code
-COPY main.py .
+ENV PYTHONPATH=/app
 
-# Expose port
-EXPOSE 8000
+EXPOSE 8002
 
-# Run with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8002/health || exit 1
+
+CMD ["uvicorn", "concepts_agent.main:app", "--host", "0.0.0.0", "--port", "8002"]

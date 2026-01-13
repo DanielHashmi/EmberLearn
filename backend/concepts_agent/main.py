@@ -1,185 +1,201 @@
 """
-ConceptsAgent - FastAPI + Dapr + OpenAI Agents SDK microservice.
+Concepts Agent - FastAPI Service
 
-Explains Python concepts with adaptive examples
+Explains Python concepts with adaptive examples based on student mastery level.
+Provides clear explanations, code examples, and related topic suggestions.
 """
 
-import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import structlog
-from dapr.clients import DaprClient
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from openai import AsyncOpenAI
-from agents import Agent, Runner
-from pydantic import BaseModel
 
 import sys
-sys.path.append('../..')
+sys.path.insert(0, '..')
 
-from shared.logging_config import configure_logging
-from shared.correlation import CorrelationIdMiddleware, get_correlation_id
-from shared.dapr_client import publish_event, get_state, save_state
+from shared.config import settings
+from shared.logging_config import setup_logging, get_logger
+from shared.correlation import CorrelationMiddleware
+from shared.models import ChatRequest, ChatResponse, AgentType, ErrorResponse
+from shared.dapr_client import get_dapr_client
 
+from .agent import ConceptsAgent
 
-# Configure logging
-configure_logging("concepts_agent")
-logger = structlog.get_logger()
+# Setup logging
+setup_logging(service_name="concepts-agent")
+logger = get_logger(__name__)
 
-# OpenAI client
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
-
-# Agent tools
-
-async def search_documentation(query: str) -> str:
-    """Tool: search_documentation"""
-    # TODO: Implement search_documentation logic
-    logger.info("search_documentation_called", query=query)
-    return f"Result from search_documentation"
-
-async def generate_example(query: str) -> str:
-    """Tool: generate_example"""
-    # TODO: Implement generate_example logic
-    logger.info("generate_example_called", query=query)
-    return f"Result from generate_example"
-
-
-# Define the agent
-concepts_agent = Agent(
-    name="ConceptsAgent",
-    instructions="""Explain Python concepts clearly with examples tailored to the student's level.
-Use analogies, visual descriptions, and progressively complex examples.
-Always validate understanding with follow-up questions.""",
-    model="gpt-4o-mini",
-)
+# Initialize agent
+concepts_agent: Optional[ConceptsAgent] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
-    logger.info("concepts_agent_starting")
+    """Application lifespan manager."""
+    global concepts_agent
+    
+    logger.info("Starting Concepts Agent service...")
+    
+    # Initialize agent
+    concepts_agent = ConceptsAgent()
+    
+    logger.info("Concepts Agent service started successfully")
+    
     yield
-    logger.info("concepts_agent_stopping")
+    
+    # Cleanup
+    logger.info("Shutting down Concepts Agent service...")
+    dapr = get_dapr_client()
+    await dapr.close()
+    logger.info("Concepts Agent service stopped")
 
 
+# Create FastAPI app
 app = FastAPI(
-    title="ConceptsAgent Service",
+    title="EmberLearn Concepts Agent",
     description="Explains Python concepts with adaptive examples",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Middleware
-app.add_middleware(CorrelationIdMiddleware)
+# Add middleware
+app.add_middleware(CorrelationMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Request/Response models
-class QueryRequest(BaseModel):
-    student_id: int
-    message: str
-    correlation_id: Optional[str] = None
-
-
-class QueryResponse(BaseModel):
-    correlation_id: str
-    status: str
-    response: str
-    agent_used: str
-
+# ==================== Health Endpoints ====================
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Kubernetes probes."""
-    return {"status": "healthy", "service": "concepts_agent"}
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "concepts-agent"}
 
 
 @app.get("/ready")
 async def readiness_check():
-    """Readiness check - verify dependencies."""
-    # Check OpenAI API key
-    if not os.getenv("OPENAI_API_KEY"):
-        return {"status": "not_ready", "reason": "Missing OPENAI_API_KEY"}, 503
-    return {"status": "ready", "service": "concepts_agent"}
+    """Readiness check endpoint."""
+    dapr = get_dapr_client()
+    dapr_healthy = await dapr.health_check()
+    
+    if not dapr_healthy:
+        raise HTTPException(status_code=503, detail="Dapr sidecar not ready")
+    
+    return {"status": "ready", "service": "concepts-agent"}
 
 
-@app.post("/query", response_model=QueryResponse)
-async def handle_query(request: QueryRequest):
-    """Handle incoming query and generate response using OpenAI Agent."""
-    correlation_id = request.correlation_id or get_correlation_id()
+# ==================== Chat Endpoints ====================
 
-    logger.info(
-        "query_received",
-        student_id=request.student_id,
-        message_preview=request.message[:50],
-        correlation_id=correlation_id,
-    )
-
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Explain a Python concept.
+    
+    Adapts explanation complexity based on student's mastery level.
+    Includes code examples and related topic suggestions.
+    """
+    global concepts_agent
+    
+    if not concepts_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
     try:
-        # Run the agent
-        result = await Runner.run(
-            concepts_agent,
-            input=request.message,
-        )
-
-        response_text = result.final_output
-
-        # Publish event to Kafka via Dapr
-        event_data = {
-            "student_id": request.student_id,
-            "agent": "concepts",
-            "query": request.message,
-            "response": response_text,
-            "correlation_id": correlation_id,
-        }
-
-        for topic in ['learning.events']:
-            await publish_event(
-                pubsub_name="kafka-pubsub",
-                topic=topic,
-                data=event_data
-            )
-
         logger.info(
-            "query_completed",
-            student_id=request.student_id,
-            correlation_id=correlation_id,
+            "processing_concept_request",
+            user_id=request.user_id,
+            message_length=len(request.message),
         )
-
-        return QueryResponse(
-            correlation_id=correlation_id,
-            status="success",
-            response=response_text,
-            agent_used="concepts"
+        
+        response = await concepts_agent.explain(request)
+        
+        logger.info(
+            "concept_explained",
+            user_id=request.user_id,
+            topic=response.related_topics[0] if response.related_topics else None,
         )
-
+        
+        return response
+        
     except Exception as e:
-        logger.error(
-            "query_failed",
-            student_id=request.student_id,
-            error=str(e),
-            correlation_id=correlation_id,
-        )
+        logger.exception("concept_explanation_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
-        # Return fallback response
-        return QueryResponse(
-            correlation_id=correlation_id,
-            status="error",
-            response="I'm having trouble processing your request right now. Please try again.",
-            agent_used="concepts"
-        )
 
+@app.post("/explain-topic")
+async def explain_topic(topic: str, mastery_level: str = "beginner"):
+    """
+    Get a structured explanation of a specific topic.
+    
+    Args:
+        topic: Python topic to explain (e.g., "for loops", "list comprehension")
+        mastery_level: Student's level (beginner, learning, proficient, mastered)
+    """
+    global concepts_agent
+    
+    if not concepts_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
+    try:
+        explanation = await concepts_agent.explain_topic(topic, mastery_level)
+        return explanation
+        
+    except Exception as e:
+        logger.exception("topic_explanation_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/topics")
+async def list_topics():
+    """Get list of available Python topics."""
+    return {
+        "topics": [
+            {"slug": "basics", "name": "Basics", "subtopics": ["variables", "data-types", "input-output", "operators"]},
+            {"slug": "control-flow", "name": "Control Flow", "subtopics": ["if-else", "for-loops", "while-loops", "break-continue"]},
+            {"slug": "data-structures", "name": "Data Structures", "subtopics": ["lists", "tuples", "dictionaries", "sets"]},
+            {"slug": "functions", "name": "Functions", "subtopics": ["defining-functions", "parameters", "return-values", "scope"]},
+            {"slug": "oop", "name": "OOP", "subtopics": ["classes", "objects", "inheritance", "encapsulation"]},
+            {"slug": "files", "name": "Files", "subtopics": ["reading-files", "writing-files", "csv", "json"]},
+            {"slug": "errors", "name": "Errors", "subtopics": ["try-except", "exception-types", "custom-exceptions", "debugging"]},
+            {"slug": "libraries", "name": "Libraries", "subtopics": ["pip", "virtual-environments", "apis", "popular-packages"]},
+        ]
+    }
+
+
+# ==================== Dapr Subscription ====================
+
+@app.post("/dapr/subscribe")
+async def dapr_subscribe():
+    """Dapr pubsub subscription configuration."""
+    return [
+        {
+            "pubsubname": settings.dapr_pubsub_name,
+            "topic": settings.kafka_topic_learning,
+            "route": "/events/learning",
+        }
+    ]
+
+
+@app.post("/events/learning")
+async def handle_learning_event(event: dict):
+    """Handle learning events."""
+    logger.info("received_learning_event", event_type=event.get("type"))
+    return {"status": "SUCCESS"}
+
+
+# ==================== Run Server ====================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+    uvicorn.run(
+        "main:app",
+        host=settings.host,
+        port=8002,
+        reload=settings.debug,
+    )

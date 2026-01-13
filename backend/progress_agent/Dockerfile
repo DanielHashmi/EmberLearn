@@ -11,9 +11,10 @@ COPY ../shared /app/shared
 
 # Copy agent code
 COPY main.py .
+COPY agent.py .
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8006
 
 # Run with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8006"]

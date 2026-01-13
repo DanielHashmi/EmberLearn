@@ -1,324 +1,244 @@
----
-sidebar_position: 4
----
-
 # API Reference
 
-Complete API documentation for EmberLearn's 6 AI agents and sandbox service.
+EmberLearn API documentation for all agent endpoints.
 
 ## Base URL
 
 ```
-http://kong-proxy.default.svc.cluster.local:8000
-```
-
-For local development with port-forward:
-```
-http://localhost:8080
+Production: https://emberlearn.app/api
+Development: http://localhost:8000/api
 ```
 
 ## Authentication
 
-All endpoints require JWT authentication:
+All endpoints (except health checks) require JWT authentication:
 
-```http
+```
 Authorization: Bearer <token>
 ```
 
-Tokens are obtained via `/api/auth/login` and expire after 24 hours.
+## Endpoints
 
----
+### Triage Agent
 
-## Triage Agent
-
-Routes student queries to specialist agents.
-
-### POST /api/triage/query
+#### POST /api/triage/chat
+Route a message to the appropriate specialist agent.
 
 **Request:**
 ```json
 {
-  "query": "How do for loops work in Python?",
-  "student_id": "uuid",
-  "context": {
-    "topic": "loops",
-    "code": "for i in range(10):\n    print(i)",
-    "error": null
-  }
+  "message": "How do for loops work?",
+  "user_id": "user123",
+  "session_id": "optional-session-id"
 }
 ```
 
 **Response:**
 ```json
 {
-  "response": "For loops in Python iterate over sequences...",
-  "agent": "concepts",
-  "confidence": 0.95,
-  "follow_up_suggestions": [
-    "Try the loops exercise",
-    "Learn about while loops"
+  "success": true,
+  "response": "For loops iterate over sequences...",
+  "agent_type": "concepts",
+  "session_id": "session123",
+  "suggestions": ["Try a for loop exercise"]
+}
+```
+
+### Concepts Agent
+
+#### POST /api/concepts/chat
+Get explanations for Python concepts.
+
+#### POST /api/concepts/explain
+Get detailed explanation with examples.
+
+**Request:**
+```json
+{
+  "topic": "loops",
+  "user_id": "user123",
+  "mastery_level": "beginner"
+}
+```
+
+### Code Review Agent
+
+#### POST /api/code-review/chat
+Get code review from chat message.
+
+#### POST /api/code-review/review
+Get detailed code analysis.
+
+**Request:**
+```json
+{
+  "code": "def hello():\n  print('hi')",
+  "user_id": "user123",
+  "context": "greeting function"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "overall_score": 75,
+  "style_score": 70,
+  "efficiency_score": 80,
+  "readability_score": 75,
+  "issues": [
+    {
+      "type": "style",
+      "severity": "info",
+      "line": 2,
+      "message": "Use 4 spaces for indentation"
+    }
+  ],
+  "suggestions": ["Add a docstring"]
+}
+```
+
+### Debug Agent
+
+#### POST /api/debug/chat
+Get debugging help from chat.
+
+#### POST /api/debug/debug
+Debug specific error with code.
+
+**Request:**
+```json
+{
+  "code": "print(x)",
+  "error_message": "NameError: name 'x' is not defined",
+  "user_id": "user123",
+  "hint_level": 1
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "error_type": "NameError",
+  "error_explanation": "Variable not defined",
+  "root_cause": "Using x before assignment",
+  "hint": "Define x before using it",
+  "prevention_tips": ["Always initialize variables"]
+}
+```
+
+### Exercise Agent
+
+#### POST /api/exercises/generate
+Generate a new exercise.
+
+**Request:**
+```json
+{
+  "topic": "loops",
+  "difficulty": "medium",
+  "user_id": "user123"
+}
+```
+
+#### POST /api/exercises/grade
+Grade a submission.
+
+**Request:**
+```json
+{
+  "exercise_id": "ex123",
+  "user_id": "user123",
+  "code": "def solution(n):\n  return sum(range(n))"
+}
+```
+
+### Progress Agent
+
+#### GET /api/progress/dashboard/{user_id}
+Get complete dashboard data.
+
+**Response:**
+```json
+{
+  "user_id": "user123",
+  "overall_mastery": 65.5,
+  "overall_level": "learning",
+  "streak_days": 5,
+  "total_xp": 1250,
+  "level": 3,
+  "topics": [
+    {
+      "topic_id": "loops",
+      "topic_name": "Control Flow",
+      "mastery_score": 72,
+      "mastery_level": "proficient"
+    }
   ]
 }
 ```
 
----
+#### POST /api/progress/update-mastery
+Update mastery for a topic.
 
-## Concepts Agent
+### Sandbox
 
-Explains Python concepts with adaptive examples.
-
-### POST /api/concepts/explain
-
-**Request:**
-```json
-{
-  "topic": "functions",
-  "student_id": "uuid",
-  "mastery_level": "learning",
-  "specific_question": "What are default parameters?"
-}
-```
-
-**Response:**
-```json
-{
-  "explanation": "Default parameters allow you to...",
-  "examples": [
-    {
-      "code": "def greet(name='World'):\n    print(f'Hello, {name}!')",
-      "description": "Function with default parameter"
-    }
-  ],
-  "related_topics": ["*args", "**kwargs"]
-}
-```
-
----
-
-## Code Review Agent
-
-Analyzes code for correctness, style, and efficiency.
-
-### POST /api/code-review/analyze
+#### POST /api/sandbox/execute
+Execute Python code safely.
 
 **Request:**
 ```json
 {
-  "code": "def add(a,b):\n  return a+b",
-  "student_id": "uuid",
-  "topic": "functions"
+  "code": "print(2 + 2)",
+  "user_id": "user123",
+  "timeout_seconds": 5
 }
 ```
 
 **Response:**
 ```json
 {
-  "rating": 75,
-  "issues": [
-    {
-      "type": "style",
-      "severity": "warning",
-      "line": 1,
-      "message": "Missing spaces around parameters",
-      "suggestion": "def add(a, b):"
-    }
-  ],
-  "summary": "Functional code with minor style issues",
-  "strengths": ["Correct logic", "Concise implementation"],
-  "improvements": ["Follow PEP 8 spacing", "Add docstring"]
+  "success": true,
+  "output": "4",
+  "execution_time_ms": 50,
+  "timed_out": false
 }
 ```
-
----
-
-## Debug Agent
-
-Parses errors and provides fix suggestions.
-
-### POST /api/debug/analyze-error
-
-**Request:**
-```json
-{
-  "code": "print(undefined_var)",
-  "error": "NameError: name 'undefined_var' is not defined",
-  "student_id": "uuid"
-}
-```
-
-**Response:**
-```json
-{
-  "root_cause": "Variable 'undefined_var' used before assignment",
-  "explanation": "Python requires variables to be defined before use...",
-  "fix_suggestion": "Define the variable before using it",
-  "fixed_code": "undefined_var = 'Hello'\nprint(undefined_var)",
-  "similar_errors_count": 3
-}
-```
-
----
-
-## Exercise Agent
-
-Generates and grades coding challenges.
-
-### POST /api/exercise/generate
-
-**Request:**
-```json
-{
-  "topic": "loops",
-  "difficulty": "beginner",
-  "student_id": "uuid"
-}
-```
-
-**Response:**
-```json
-{
-  "id": "exercise-uuid",
-  "topic": "loops",
-  "difficulty": "beginner",
-  "title": "Sum of Numbers",
-  "description": "Write a function that returns the sum of numbers from 1 to n",
-  "starter_code": "def sum_to_n(n):\n    # Your code here\n    pass",
-  "test_cases": [
-    {"input": "5", "expected_output": "15", "is_hidden": false},
-    {"input": "10", "expected_output": "55", "is_hidden": true}
-  ],
-  "hints": ["Use a for loop", "range(1, n+1) includes n"]
-}
-```
-
-### POST /api/exercise/submit
-
-**Request:**
-```json
-{
-  "exercise_id": "exercise-uuid",
-  "code": "def sum_to_n(n):\n    return sum(range(1, n+1))",
-  "student_id": "uuid"
-}
-```
-
-**Response:**
-```json
-{
-  "passed": true,
-  "score": 100,
-  "test_results": [
-    {"test_case_id": "1", "passed": true, "actual_output": "15", "expected_output": "15"},
-    {"test_case_id": "2", "passed": true, "actual_output": "55", "expected_output": "55"}
-  ],
-  "feedback": "Excellent! All tests passed.",
-  "code_review": {
-    "rating": 95,
-    "summary": "Clean, Pythonic solution using built-in sum()"
-  }
-}
-```
-
----
-
-## Progress Agent
-
-Tracks mastery scores and learning progress.
-
-### GET /api/progress/dashboard
-
-**Query Parameters:**
-- `student_id` (required): Student UUID
-
-**Response:**
-```json
-{
-  "student_id": "uuid",
-  "overall_mastery": 65,
-  "overall_level": "learning",
-  "topics": [
-    {
-      "topic_id": "variables",
-      "topic_name": "Variables & Data Types",
-      "mastery_score": 85,
-      "mastery_level": "proficient",
-      "exercises_completed": 12,
-      "exercises_total": 15,
-      "last_activity": "2024-01-15T10:30:00Z"
-    }
-  ],
-  "streak_days": 7,
-  "total_exercises_completed": 45,
-  "total_time_spent_minutes": 320
-}
-```
-
----
-
-## Sandbox Service
-
-Executes Python code in isolated environment.
-
-### POST /api/sandbox/execute
-
-**Request:**
-```json
-{
-  "code": "print('Hello, World!')",
-  "student_id": "uuid",
-  "timeout_ms": 5000
-}
-```
-
-**Response:**
-```json
-{
-  "output": "Hello, World!\n",
-  "error": null,
-  "execution_time_ms": 45,
-  "memory_used_bytes": 1048576
-}
-```
-
-**Limits:**
-- Timeout: 5 seconds max
-- Memory: 50MB max
-- No network access
-- No filesystem access (except temp)
-
----
-
-## Kafka Topics
-
-Events published for analytics and inter-agent communication:
-
-| Topic | Schema |
-|-------|--------|
-| `learning.query` | `{student_id, query, timestamp}` |
-| `learning.response` | `{student_id, agent, response, latency_ms}` |
-| `code.executed` | `{student_id, code_hash, success, execution_time_ms}` |
-| `code.reviewed` | `{student_id, rating, issues_count}` |
-| `exercise.created` | `{exercise_id, topic, difficulty}` |
-| `exercise.completed` | `{student_id, exercise_id, passed, score}` |
-| `struggle.detected` | `{student_id, trigger, details}` |
-| `progress.updated` | `{student_id, topic, old_score, new_score}` |
-
----
 
 ## Error Responses
 
-All endpoints return errors in this format:
+All errors follow this format:
 
 ```json
 {
-  "error": "error_code",
-  "message": "Human-readable description",
+  "success": false,
+  "error": "Error message",
+  "error_code": "ERROR_CODE",
   "details": {}
 }
 ```
 
-Common error codes:
-- `unauthorized`: Invalid or missing JWT
-- `validation_error`: Invalid request body
-- `rate_limited`: Too many requests
-- `internal_error`: Server error
+### Common Error Codes
+
+| Code | Description |
+|------|-------------|
+| 400 | Bad Request |
+| 401 | Unauthorized |
+| 403 | Forbidden |
+| 404 | Not Found |
+| 429 | Rate Limited |
+| 500 | Internal Error |
+| 503 | Service Unavailable |
+
+## Rate Limits
+
+| Endpoint | Limit |
+|----------|-------|
+| /api/triage | 60/min |
+| /api/concepts | 60/min |
+| /api/code-review | 30/min |
+| /api/debug | 60/min |
+| /api/exercises | 30/min |
+| /api/progress | 120/min |
+| /api/sandbox | 20/min |

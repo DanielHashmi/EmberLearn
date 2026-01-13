@@ -1,190 +1,204 @@
 """
-CodeReviewAgent - FastAPI + Dapr + OpenAI Agents SDK microservice.
+Code Review Agent - FastAPI Service
 
-Analyzes code for correctness, style (PEP 8), and efficiency
+Analyzes Python code for:
+- PEP 8 style compliance
+- Code efficiency and best practices
+- Readability and maintainability
+- Specific improvement suggestions
 """
 
-import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import structlog
-from dapr.clients import DaprClient
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from openai import AsyncOpenAI
-from agents import Agent, Runner
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import sys
-sys.path.append('../..')
+sys.path.insert(0, '..')
 
-from shared.logging_config import configure_logging
-from shared.correlation import CorrelationIdMiddleware, get_correlation_id
-from shared.dapr_client import publish_event, get_state, save_state
+from shared.config import settings
+from shared.logging_config import setup_logging, get_logger
+from shared.correlation import CorrelationMiddleware
+from shared.models import ChatRequest, ChatResponse, AgentType
+from shared.dapr_client import get_dapr_client
 
+from .agent import CodeReviewAgent
 
-# Configure logging
-configure_logging("code_review_agent")
-logger = structlog.get_logger()
+# Setup logging
+setup_logging(service_name="code-review-agent")
+logger = get_logger(__name__)
 
-# OpenAI client
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
-
-# Agent tools
-
-async def run_linter(query: str) -> str:
-    """Tool: run_linter"""
-    # TODO: Implement run_linter logic
-    logger.info("run_linter_called", query=query)
-    return f"Result from run_linter"
-
-async def analyze_complexity(query: str) -> str:
-    """Tool: analyze_complexity"""
-    # TODO: Implement analyze_complexity logic
-    logger.info("analyze_complexity_called", query=query)
-    return f"Result from analyze_complexity"
+# Initialize agent
+code_review_agent: Optional[CodeReviewAgent] = None
 
 
-# Define the agent
-code_review_agent = Agent(
-    name="CodeReviewAgent",
-    instructions="""Review Python code for:
-1. Correctness and logic errors
-2. PEP 8 style compliance
-3. Performance and efficiency
-4. Best practices and pythonic patterns
-Provide specific, actionable feedback with examples.""",
-    model="gpt-4o-mini",
-    # Handoffs to specialist agents
-    handoffs=['debug'],
-)
+class CodeReviewRequest(BaseModel):
+    """Request for code review."""
+    code: str = Field(..., min_length=1, max_length=50000)
+    user_id: str
+    context: Optional[str] = None  # What the code is supposed to do
+    focus_areas: list[str] = Field(default_factory=list)  # style, efficiency, readability
+
+
+class CodeReviewResponse(BaseModel):
+    """Response from code review."""
+    success: bool = True
+    overall_score: float = Field(ge=0, le=100)
+    summary: str
+    style_score: float = Field(ge=0, le=100)
+    efficiency_score: float = Field(ge=0, le=100)
+    readability_score: float = Field(ge=0, le=100)
+    issues: list[dict]
+    suggestions: list[str]
+    improved_code: Optional[str] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
-    logger.info("code_review_agent_starting")
+    """Application lifespan manager."""
+    global code_review_agent
+    
+    logger.info("Starting Code Review Agent service...")
+    code_review_agent = CodeReviewAgent()
+    logger.info("Code Review Agent service started successfully")
+    
     yield
-    logger.info("code_review_agent_stopping")
+    
+    logger.info("Shutting down Code Review Agent service...")
+    dapr = get_dapr_client()
+    await dapr.close()
+    logger.info("Code Review Agent service stopped")
 
 
 app = FastAPI(
-    title="CodeReviewAgent Service",
-    description="Analyzes code for correctness, style (PEP 8), and efficiency",
+    title="EmberLearn Code Review Agent",
+    description="Analyzes Python code for style, efficiency, and best practices",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# Middleware
-app.add_middleware(CorrelationIdMiddleware)
+app.add_middleware(CorrelationMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# Request/Response models
-class QueryRequest(BaseModel):
-    student_id: int
-    message: str
-    correlation_id: Optional[str] = None
-
-
-class QueryResponse(BaseModel):
-    correlation_id: str
-    status: str
-    response: str
-    agent_used: str
-
-
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Kubernetes probes."""
-    return {"status": "healthy", "service": "code_review_agent"}
+    return {"status": "healthy", "service": "code-review-agent"}
 
 
 @app.get("/ready")
 async def readiness_check():
-    """Readiness check - verify dependencies."""
-    # Check OpenAI API key
-    if not os.getenv("OPENAI_API_KEY"):
-        return {"status": "not_ready", "reason": "Missing OPENAI_API_KEY"}, 503
-    return {"status": "ready", "service": "code_review_agent"}
+    dapr = get_dapr_client()
+    if not await dapr.health_check():
+        raise HTTPException(status_code=503, detail="Dapr sidecar not ready")
+    return {"status": "ready", "service": "code-review-agent"}
 
 
-@app.post("/query", response_model=QueryResponse)
-async def handle_query(request: QueryRequest):
-    """Handle incoming query and generate response using OpenAI Agent."""
-    correlation_id = request.correlation_id or get_correlation_id()
-
-    logger.info(
-        "query_received",
-        student_id=request.student_id,
-        message_preview=request.message[:50],
-        correlation_id=correlation_id,
-    )
-
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Review code from a chat message.
+    
+    Extracts code from the message and provides feedback.
+    """
+    global code_review_agent
+    
+    if not code_review_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
     try:
-        # Run the agent
-        result = await Runner.run(
-            code_review_agent,
-            input=request.message,
-        )
-
-        response_text = result.final_output
-
-        # Publish event to Kafka via Dapr
-        event_data = {
-            "student_id": request.student_id,
-            "agent": "code_review",
-            "query": request.message,
-            "response": response_text,
-            "correlation_id": correlation_id,
-        }
-
-        for topic in ['code.submissions']:
-            await publish_event(
-                pubsub_name="kafka-pubsub",
-                topic=topic,
-                data=event_data
-            )
-
-        logger.info(
-            "query_completed",
-            student_id=request.student_id,
-            correlation_id=correlation_id,
-        )
-
-        return QueryResponse(
-            correlation_id=correlation_id,
-            status="success",
-            response=response_text,
-            agent_used="code_review"
-        )
-
+        logger.info("processing_chat_review", user_id=request.user_id)
+        response = await code_review_agent.review_from_chat(request)
+        return response
+        
     except Exception as e:
-        logger.error(
-            "query_failed",
-            student_id=request.student_id,
-            error=str(e),
-            correlation_id=correlation_id,
-        )
+        logger.exception("chat_review_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
-        # Return fallback response
-        return QueryResponse(
-            correlation_id=correlation_id,
-            status="error",
-            response="I'm having trouble processing your request right now. Please try again.",
-            agent_used="code_review"
+
+@app.post("/review", response_model=CodeReviewResponse)
+async def review_code(request: CodeReviewRequest):
+    """
+    Perform detailed code review.
+    
+    Returns scores and specific suggestions for improvement.
+    """
+    global code_review_agent
+    
+    if not code_review_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
+    try:
+        logger.info(
+            "processing_code_review",
+            user_id=request.user_id,
+            code_length=len(request.code),
         )
+        
+        review = await code_review_agent.review(
+            code=request.code,
+            user_id=request.user_id,
+            context=request.context,
+            focus_areas=request.focus_areas,
+        )
+        
+        logger.info(
+            "code_review_complete",
+            user_id=request.user_id,
+            overall_score=review.overall_score,
+        )
+        
+        return review
+        
+    except Exception as e:
+        logger.exception("code_review_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/quick-check")
+async def quick_check(code: str):
+    """
+    Quick syntax and style check without detailed analysis.
+    """
+    global code_review_agent
+    
+    if not code_review_agent:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    
+    try:
+        result = await code_review_agent.quick_check(code)
+        return result
+        
+    except Exception as e:
+        logger.exception("quick_check_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/dapr/subscribe")
+async def dapr_subscribe():
+    return [
+        {
+            "pubsubname": settings.dapr_pubsub_name,
+            "topic": settings.kafka_topic_code,
+            "route": "/events/code",
+        }
+    ]
+
+
+@app.post("/events/code")
+async def handle_code_event(event: dict):
+    logger.info("received_code_event", event_type=event.get("type"))
+    return {"status": "SUCCESS"}
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", host=settings.host, port=8003, reload=settings.debug)
