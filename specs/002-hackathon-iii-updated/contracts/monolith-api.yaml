@@ -1,0 +1,642 @@
+openapi: 3.1.0
+info:
+  title: EmberLearn Monolith API
+  version: 1.0.0
+  description: |
+    OpenAPI contract for the local/dev FastAPI monolith started by `start.sh`.
+
+    Source of truth:
+    - App wiring: `backend/main.py:82`
+    - Routers: `backend/routers/*.py`
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ========== Auth ==========
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        name:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    User:
+      type: object
+      required: [id, email, name]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/User'
+
+    # ========== Chat ==========
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    ChatResponse:
+      type: object
+      required: [id, message, response, agent_type, created_at]
+      properties:
+        id:
+          type: string
+        message:
+          type: string
+        response:
+          type: string
+        agent_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ChatHistoryResponse:
+      type: object
+      required: [messages, total, page, page_size]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    # ========== Execute ==========
+    ExecuteCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    ExecuteCodeResponse:
+      type: object
+      required: [success, output, execution_time_ms]
+      properties:
+        success:
+          type: boolean
+        output:
+          type: string
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+        execution_time_ms:
+          type: integer
+
+    ValidateCodeResponse:
+      type: object
+      required: [valid, error]
+      properties:
+        valid:
+          type: boolean
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+
+    # ========== Exercises ==========
+    Exercise:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - difficulty
+        - topic_slug
+        - topic_name
+        - starter_code
+        - estimated_time
+        - completed
+        - best_score
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        difficulty:
+          type: string
+        topic_slug:
+          type: string
+        topic_name:
+          type: string
+        starter_code:
+          type: string
+        estimated_time:
+          type: integer
+        completed:
+          type: boolean
+        best_score:
+          type: integer
+
+    ExerciseDetail:
+      allOf:
+        - $ref: '#/components/schemas/Exercise'
+        - type: object
+          properties:
+            solution:
+              anyOf:
+                - type: string
+                - type: 'null'
+            test_cases:
+              type: array
+              items:
+                type: object
+
+    SubmitCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+
+    TestCaseResult:
+      type: object
+      required: [input_data, expected, actual, passed]
+      properties:
+        input_data:
+          type: string
+        expected:
+          type: string
+        actual:
+          type: string
+        passed:
+          type: boolean
+
+    SubmitCodeResponse:
+      type: object
+      required: [success, score, passed, output, xp_earned, test_results]
+      properties:
+        success:
+          type: boolean
+        score:
+          type: integer
+        passed:
+          type: boolean
+        output:
+          type: string
+        error:
+          anyOf:
+            - type: string
+            - type: 'null'
+        xp_earned:
+          type: integer
+        test_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestCaseResult'
+
+    ExerciseListByTopic:
+      type: object
+      required: [topic_slug, topic_name, exercises]
+      properties:
+        topic_slug:
+          type: string
+        topic_name:
+          type: string
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/Exercise'
+
+    # ========== Progress ==========
+    TopicProgress:
+      type: object
+      required: [slug, name, mastery_score, exercises_completed, total_exercises]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        mastery_score:
+          type: number
+        exercises_completed:
+          type: integer
+        total_exercises:
+          type: integer
+
+    UserStats:
+      type: object
+      required: [user_id, streak, longest_streak, total_xp, level, overall_mastery, topics]
+      properties:
+        user_id:
+          type: string
+        streak:
+          type: integer
+        longest_streak:
+          type: integer
+        total_xp:
+          type: integer
+        level:
+          type: integer
+        overall_mastery:
+          type: number
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopicProgress'
+
+    ActivityResponse:
+      type: object
+      required: [streak, xp_earned, message]
+      properties:
+        streak:
+          type: integer
+        xp_earned:
+          type: integer
+        message:
+          type: string
+
+    MasteryUpdateResponse:
+      type: object
+      required: [topic_slug, mastery_score, message]
+      properties:
+        topic_slug:
+          type: string
+        mastery_score:
+          type: number
+        message:
+          type: string
+
+    # ========== Health/Status ==========
+    HealthResponse:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+        service:
+          type: string
+        timestamp:
+          type: string
+
+    ApiStatusResponse:
+      type: object
+      required: [status, version, agents]
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        agents:
+          type: array
+          items:
+            type: string
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ========== Health/Status (no auth guarantee stated by code; consumers may treat differently) ==========
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/status:
+    get:
+      summary: API status
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiStatusResponse'
+
+  # ========== Auth ==========
+  /api/auth/register:
+    post:
+      summary: Register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /api/auth/login:
+    post:
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /api/auth/me:
+    get:
+      summary: Get current user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  # ========== Chat ==========
+  /api/chat:
+    post:
+      summary: Chat (auto-routed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+
+  /api/chat/history:
+    get:
+      summary: Chat history
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatHistoryResponse'
+
+    delete:
+      summary: Clear chat history
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, deleted_count]
+                properties:
+                  message:
+                    type: string
+                  deleted_count:
+                    type: integer
+
+  # ========== Execute ==========
+  /api/execute:
+    post:
+      summary: Execute code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteCodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecuteCodeResponse'
+
+  /api/execute/validate:
+    post:
+      summary: Validate code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteCodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateCodeResponse'
+
+  # ========== Exercises ==========
+  /api/exercises:
+    get:
+      summary: List exercises
+      parameters:
+        - name: topic
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
+
+  /api/exercises/by-topic:
+    get:
+      summary: List exercises grouped by topic
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExerciseListByTopic'
+
+  /api/exercises/{exercise_id}:
+    get:
+      summary: Get exercise by id
+      parameters:
+        - name: exercise_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseDetail'
+
+  /api/exercises/{exercise_id}/submit:
+    post:
+      summary: Submit exercise code
+      parameters:
+        - name: exercise_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitCodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitCodeResponse'
+
+  # ========== Progress ==========
+  /api/progress:
+    get:
+      summary: Get user progress stats
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStats'
+
+  /api/progress/topics:
+    get:
+      summary: Get topics progress
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TopicProgress'
+
+  /api/progress/topics/{topic_slug}:
+    get:
+      summary: Get progress for a topic
+      parameters:
+        - name: topic_slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopicProgress'
+
+  /api/progress/activity:
+    post:
+      summary: Record activity
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityResponse'
+
+  /api/progress/topics/{topic_slug}/complete-exercise:
+    post:
+      summary: Mark an exercise complete for a topic
+      parameters:
+        - name: topic_slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasteryUpdateResponse'

@@ -1,0 +1,68 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: emberlearn-config
+  namespace: emberlearn
+spec:
+  tracing:
+    samplingRate: "1"
+    zipkin:
+      endpointAddress: "http://zipkin.observability.svc.cluster.local:9411/api/v2/spans"
+  metric:
+    enabled: true
+  logging:
+    apiLogging:
+      enabled: true
+      obfuscateURLs: false
+      omitHealthChecks: true
+  accessControl:
+    defaultAction: allow
+    trustDomain: "emberlearn"
+    policies:
+      - appId: triage-agent
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+      - appId: concepts-agent
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+      - appId: code-review-agent
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+      - appId: debug-agent
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+      - appId: exercise-agent
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+      - appId: progress-agent
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+      - appId: sandbox
+        defaultAction: allow
+        trustDomain: "emberlearn"
+        namespace: "emberlearn"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: emberlearn
+  labels:
+    name: emberlearn
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: emberlearn-secrets
+  namespace: emberlearn
+type: Opaque
+stringData:
+  openai-api-key: "${OPENAI_API_KEY}"
+  database-url: "${DATABASE_URL}"
+  jwt-secret-key: "${JWT_SECRET_KEY}"
+  redis-password: "${REDIS_PASSWORD}"

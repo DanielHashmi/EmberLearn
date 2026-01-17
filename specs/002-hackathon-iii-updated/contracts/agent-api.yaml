@@ -1,0 +1,558 @@
+openapi: 3.1.0
+info:
+  title: EmberLearn AI Agent API
+  version: 1.0.0
+  description: |
+    API contracts for 6 AI agent microservices built with OpenAI Agents SDK.
+    All services communicate via Kafka pub/sub and use Dapr for state management.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development (Minikube)
+  - url: http://kong-gateway.default.svc.cluster.local
+    description: Kubernetes (via Kong API Gateway)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    QueryRequest:
+      type: object
+      required: [student_id, message]
+      properties:
+        student_id:
+          type: integer
+          example: 42
+        message:
+          type: string
+          example: "How do for loops work in Python?"
+        correlation_id:
+          type: string
+          format: uuid
+          description: Optional correlation ID for distributed tracing
+
+    QueryResponse:
+      type: object
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [success, fallback, error]
+        response:
+          type: string
+          example: "A for loop in Python iterates over a sequence..."
+        agent_used:
+          type: string
+          enum: [triage, concepts, code_review, debug, exercise, progress]
+
+    CodeExecutionRequest:
+      type: object
+      required: [student_id, code]
+      properties:
+        student_id:
+          type: integer
+        code:
+          type: string
+          example: |
+            for i in range(10):
+                print(i)
+        correlation_id:
+          type: string
+          format: uuid
+
+    CodeExecutionResponse:
+      type: object
+      properties:
+        correlation_id:
+          type: string
+          format: uuid
+        success:
+          type: boolean
+        stdout:
+          type: string
+          example: "0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+        stderr:
+          type: string
+        returncode:
+          type: integer
+        execution_time_ms:
+          type: integer
+        error:
+          type: string
+          description: Error message if execution failed
+
+    ExerciseGenerationRequest:
+      type: object
+      required: [topic_id, difficulty]
+      properties:
+        topic_id:
+          type: integer
+          example: 2
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        student_id:
+          type: integer
+          description: For personalization based on student history
+
+    ExerciseResponse:
+      type: object
+      properties:
+        exercise_id:
+          type: integer
+        uuid:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        starter_code:
+          type: string
+        difficulty:
+          type: string
+        test_cases:
+          type: array
+          items:
+            type: object
+            properties:
+              input_data:
+                type: string
+              expected_output:
+                type: string
+              is_hidden:
+                type: boolean
+
+    MasteryCalculationResponse:
+      type: object
+      properties:
+        student_id:
+          type: integer
+        topic_id:
+          type: integer
+        mastery_score:
+          type: number
+          format: float
+          example: 75.5
+        mastery_level:
+          type: string
+          enum: [beginner, learning, proficient, mastered]
+        breakdown:
+          type: object
+          properties:
+            exercise_completion_pct:
+              type: number
+            quiz_score_avg:
+              type: number
+            code_quality_avg:
+              type: number
+            consistency_score:
+              type: number
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        correlation_id:
+          type: string
+          format: uuid
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/triage/query:
+    post:
+      summary: Route query to appropriate specialist agent
+      description: |
+        Triage agent analyzes query intent and hands off to specialist:
+        - Python concepts → Concepts Agent
+        - Code review → Code Review Agent
+        - Error debugging → Debug Agent
+        - Exercise requests → Exercise Agent
+        - Progress tracking → Progress Agent
+      tags: [Triage Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query routed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Service unavailable (OpenAI API down, using fallback)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+
+  /api/concepts/explain:
+    post:
+      summary: Explain Python concept with adaptive examples
+      description: Concepts agent provides detailed explanations tailored to student level
+      tags: [Concepts Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Explanation generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueryResponse'
+
+  /api/code-review/analyze:
+    post:
+      summary: Analyze code for correctness, style, efficiency
+      description: |
+        Code Review agent evaluates:
+        - Correctness (logic errors, edge cases)
+        - Style (PEP 8 compliance)
+        - Efficiency (time/space complexity)
+        - Returns rating 0-100 and detailed feedback
+      tags: [Code Review Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, code]
+              properties:
+                student_id:
+                  type: integer
+                code:
+                  type: string
+                context:
+                  type: string
+                  description: Exercise or assignment context
+      responses:
+        '200':
+          description: Code analysis complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  correlation_id:
+                    type: string
+                    format: uuid
+                  rating:
+                    type: number
+                    format: float
+                    example: 85.5
+                  feedback:
+                    type: string
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        category:
+                          type: string
+                          enum: [correctness, style, efficiency]
+                        severity:
+                          type: string
+                          enum: [error, warning, info]
+                        message:
+                          type: string
+                        line:
+                          type: integer
+
+  /api/debug/analyze-error:
+    post:
+      summary: Parse errors and identify root causes
+      description: Debug agent analyzes error messages and provides hints
+      tags: [Debug Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, error_message, code]
+              properties:
+                student_id:
+                  type: integer
+                error_message:
+                  type: string
+                  example: "NameError: name 'x' is not defined"
+                code:
+                  type: string
+                traceback:
+                  type: string
+      responses:
+        '200':
+          description: Error analysis complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  correlation_id:
+                    type: string
+                    format: uuid
+                  error_type:
+                    type: string
+                  root_cause:
+                    type: string
+                  hints:
+                    type: array
+                    items:
+                      type: string
+                  similar_errors_count:
+                    type: integer
+                    description: How many times student has seen this error type
+
+  /api/exercise/generate:
+    post:
+      summary: Generate coding challenge with test cases
+      description: Exercise agent creates personalized exercises based on topic and difficulty
+      tags: [Exercise Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseGenerationRequest'
+      responses:
+        '201':
+          description: Exercise created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseResponse'
+
+  /api/exercise/submit:
+    post:
+      summary: Submit exercise attempt and get auto-grading
+      description: |
+        1. Executes code in sandbox
+        2. Runs test cases
+        3. Calculates score
+        4. Requests Code Review agent rating
+        5. Updates student progress
+      tags: [Exercise Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, exercise_id, code]
+              properties:
+                student_id:
+                  type: integer
+                exercise_id:
+                  type: integer
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Submission graded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submission_id:
+                    type: integer
+                  uuid:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [passed, failed, error]
+                  score:
+                    type: number
+                    format: float
+                  passed_count:
+                    type: integer
+                  total_count:
+                    type: integer
+                  test_results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        test_id:
+                          type: integer
+                        passed:
+                          type: boolean
+                        expected:
+                          type: string
+                        actual:
+                          type: string
+                        error:
+                          type: string
+                  code_quality_rating:
+                    type: number
+                    format: float
+
+  /api/progress/calculate:
+    post:
+      summary: Calculate mastery score for topic
+      description: |
+        Progress agent calculates weighted mastery score:
+        - Exercise completion: 40%
+        - Quiz scores: 30%
+        - Code quality: 20%
+        - Consistency/streak: 10%
+      tags: [Progress Agent]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, topic_id]
+              properties:
+                student_id:
+                  type: integer
+                topic_id:
+                  type: integer
+      responses:
+        '200':
+          description: Mastery calculated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MasteryCalculationResponse'
+
+  /api/progress/dashboard:
+    get:
+      summary: Get student progress dashboard
+      description: Returns mastery scores across all 8 topics
+      tags: [Progress Agent]
+      parameters:
+        - name: student_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  student_id:
+                    type: integer
+                  topics:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MasteryCalculationResponse'
+                  overall_progress:
+                    type: number
+                    format: float
+                    description: Average across all topics
+
+  /api/sandbox/execute:
+    post:
+      summary: Execute Python code in secure sandbox
+      description: |
+        Shared sandbox service used by all agents.
+        Security constraints:
+        - 5s timeout
+        - 50MB memory limit
+        - Python stdlib only
+        - No network access
+        - No filesystem access (except /tmp)
+      tags: [Sandbox Service]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeExecutionRequest'
+      responses:
+        '200':
+          description: Code executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeExecutionResponse'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Used by Kubernetes liveness/readiness probes
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service_name:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /metrics:
+    get:
+      summary: Prometheus metrics endpoint
+      description: Exposes metrics for monitoring
+      tags: [Observability]
+      security: []
+      responses:
+        '200':
+          description: Metrics in Prometheus format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+tags:
+  - name: Triage Agent
+    description: Routes queries to specialist agents
+  - name: Concepts Agent
+    description: Explains Python concepts with adaptive examples
+  - name: Code Review Agent
+    description: Analyzes code quality (correctness, style, efficiency)
+  - name: Debug Agent
+    description: Parses errors and identifies root causes
+  - name: Exercise Agent
+    description: Generates and grades coding challenges
+  - name: Progress Agent
+    description: Tracks mastery scores across topics
+  - name: Sandbox Service
+    description: Secure Python code execution
+  - name: Health
+    description: Health checks and status endpoints
+  - name: Observability
+    description: Metrics and tracing endpoints
